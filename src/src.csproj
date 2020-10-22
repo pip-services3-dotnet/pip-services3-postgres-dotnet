@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;netstandard2.1</TargetFrameworks>
+    <AssemblyName>PipServices3.Postgres</AssemblyName>
+    <RootNamespace>PipServices3.Postgres</RootNamespace>
+    <ApplicationIcon />
+    <Win32Resource />
+    <Version>3.3.0</Version>
+    <Authors>Sergey Seroukhov, Alex Mazur, Danyil Tretiakov</Authors>
+    <Copyright>Conceptual Vision Consulting LLC. 2017-2020</Copyright>
+    <Description>PostgreSQL components for Pip.Services in .NET</Description>
+    <Company>Conceptual Vision Consulting LLC.</Company>
+    <Product>PipServices3.Postgres</Product>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/pip-services3-dotnet/pip-services3-postgres-dotnet</PackageProjectUrl>
+    <PackageIconUrl>https://raw.githubusercontent.com/pip-services/pip-services/master/design/Icon.png</PackageIconUrl>
+    <PackageTags>PipServices V3 microservices toolkit</PackageTags>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="PostgreSQL.Driver" Version="2.10.4" />
+    <PackageReference Include="PipServices3.Commons" Version="3.1.1" />
+    <PackageReference Include="PipServices3.Components" Version="3.1.1" />
+    <PackageReference Include="PipServices3.Data" Version="3.2.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Build\" />
+  </ItemGroup>
+</Project>

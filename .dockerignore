@@ -1,0 +1,15 @@
+/.vscode
+/.git
+/.gitignore
+/.dockerignore
+/doc
+/dist
+/obj
+/doc
+/docker
+/*.sh
+/*.ps1
+/*.nuspec
+/*.nupkg
+/*.userprefs
+/*.md
