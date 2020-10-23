@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Threading.Tasks;
-using PostgreSQL.Driver;
 using PipServices3.Commons.Config;
 using PipServices3.Commons.Errors;
 using PipServices3.Commons.Refer;
