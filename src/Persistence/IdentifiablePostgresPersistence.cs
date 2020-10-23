@@ -113,6 +113,68 @@ namespace PipServices3.Postgres.Persistence
         { }
 
         /// <summary>
+        /// Gets a list of data items retrieved by given unique ids.
+        /// </summary>
+        /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
+        /// <param name="ids">ids of data items to be retrieved</param>
+        /// <returns>a data list of results by ids.</returns>
+        public virtual async Task<List<T>> GetListByIdsAsync(string correlationId, K[] ids)
+        {
+            var @params = GenerateParameters(ids);
+            var query = "SELECT * FROM " + _tableName + " WHERE id IN (" + @params +")";
+
+            var items = await ExecuteReaderAsync(query, cmd => SetParameters(cmd, ids));
+
+            _logger.Trace(correlationId, $"Retrieved {items.Count} from {_tableName}");
+
+            return items.Select(item => ConvertToPublic(item)).ToList();
+        }
+
+        /// <summary>
+        /// Gets a data item by its unique id.
+        /// </summary>
+        /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
+        /// <param name="id">an id of data item to be retrieved.</param>
+        /// <returns>a data item by id.</returns>
+        public virtual async Task<T> GetOneByIdAsync(string correlationId, K id)
+        {
+            var @params = new[] { id };
+            var query = "SELECT * FROM " + _tableName + " WHERE id=$1";
+
+            var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, @params))).FirstOrDefault();
+
+            if (result == null)
+            {
+                _logger.Trace(correlationId, "Nothing found from {0} with id = {1}", _tableName, id);
+                return default;
+            }
+
+            _logger.Trace(correlationId, "Retrieved from {0} with id = {1}", _tableName, id);
+
+            var item = ConvertToPublic(result);
+
+            return item;
+        }
+
+        /// <summary>
+        /// Creates a data item.
+        /// </summary>
+        /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
+        /// <param name="item">an item to be created.</param>
+        /// <returns>created item.</returns>
+        public override async Task<T> CreateAsync(string correlationId, T item)
+        {
+            if (item is IStringIdentifiable && item.Id == null)
+                ObjectWriter.SetProperty(item, nameof(item.Id), IdGenerator.NextLong());
+
+            return await base.CreateAsync(correlationId, item);
+        }
+
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        /// TO-DO
+        /// ...
+
+        /// <summary>
         /// Gets a page of data items retrieved by a given filter and sorted according to sort parameters.
         /// 
         /// This method shall be called by a public getPageByFilter method from child
@@ -170,50 +232,6 @@ namespace PipServices3.Postgres.Persistence
             return result;
         }
 
-        /// <summary>
-        /// Gets a list of data items retrieved by given unique ids.
-        /// </summary>
-        /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
-        /// <param name="ids">ids of data items to be retrieved</param>
-        /// <returns>a data list of results by ids.</returns>
-        public virtual async Task<List<T>> GetListByIdsAsync(string correlationId, K[] ids)
-        {
-            
-            var documentSerializer = BsonSerializer.SerializerRegistry.GetSerializer<T>();
-            var builder = Builders<T>.Filter;
-            var filterDefinition = builder.In(x => x.Id, ids);
-            var renderedFilter = filterDefinition.Render(documentSerializer, BsonSerializer.SerializerRegistry);
-
-            var query = _collection.Find(renderedFilter);
-            var items = await query.ToListAsync();
-
-            _logger.Trace(correlationId, $"Retrieved {items.Count} from {_collection}");
-
-            return items;
-        }
-
-        /// <summary>
-        /// Gets a data item by its unique id.
-        /// </summary>
-        /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
-        /// <param name="id">an id of data item to be retrieved.</param>
-        /// <returns>a data item by id.</returns>
-        public virtual async Task<T> GetOneByIdAsync(string correlationId, K id)
-        {
-            var builder = Builders<T>.Filter;
-            var filter = builder.Eq(x => x.Id, id);
-            var result = await _collection.Find(filter).FirstOrDefaultAsync();
-
-            if (result == null)
-            {
-                _logger.Trace(correlationId, "Nothing found from {0} with id = {1}", _collectionName, id);
-                return default(T);
-            }
-
-            _logger.Trace(correlationId, "Retrieved from {0} with id = {1}", _collectionName, id);
-
-            return result;
-        }
 
         /// <summary>
         /// Gets a data item by its unique id.
@@ -234,35 +252,21 @@ namespace PipServices3.Postgres.Persistence
 
             if (result == null)
             {
-                _logger.Trace(correlationId, "Nothing found from {0} with id = {1} and projection fields '{2}'", _collectionName, id, StringConverter.ToString(projection));
+                _logger.Trace(correlationId, "Nothing found from {0} with id = {1} and projection fields '{2}'", _tableName, id, StringConverter.ToString(projection));
                 return null;
             }
 
             if (result.ElementCount == 0)
             {
-                _logger.Trace(correlationId, "Retrieved from {0} with id = {1}, but projection is not valid '{2}'", _collectionName, id, StringConverter.ToString(projection));
+                _logger.Trace(correlationId, "Retrieved from {0} with id = {1}, but projection is not valid '{2}'", _tableName, id, StringConverter.ToString(projection));
                 return null;
             }
 
-            _logger.Trace(correlationId, "Retrieved from {0} with id = {1} and projection fields '{2}'", _collectionName, id, StringConverter.ToString(projection));
+            _logger.Trace(correlationId, "Retrieved from {0} with id = {1} and projection fields '{2}'", _tableName, id, StringConverter.ToString(projection));
 
             return BsonSerializer.Deserialize<object>(result);
         }
 
-        /// <summary>
-        /// Creates a data item.
-        /// </summary>
-        /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
-        /// <param name="item">an item to be created.</param>
-        /// <returns>created item.</returns>
-        public override async Task<T> CreateAsync(string correlationId, T item)
-        {
-            var identifiable = item as IStringIdentifiable;
-            if (identifiable != null && item.Id == null)
-                ObjectWriter.SetProperty(item, nameof(item.Id), IdGenerator.NextLong());
-
-            return await base.CreateAsync(correlationId, item);
-        }
 
         /// <summary>
         /// Sets a data item. If the data item exists it updates it, otherwise it create a new data item.
@@ -284,7 +288,7 @@ namespace PipServices3.Postgres.Persistence
             };
             var result = await _collection.FindOneAndReplaceAsync(filter, item, options);
 
-            _logger.Trace(correlationId, "Set in {0} with id = {1}", _collectionName, item.Id);
+            _logger.Trace(correlationId, "Set in {0} with id = {1}", _tableName, item.Id);
 
             return result;
         }
@@ -309,7 +313,7 @@ namespace PipServices3.Postgres.Persistence
             };
             var result = await _collection.FindOneAndReplaceAsync(filter, item, options);
 
-            _logger.Trace(correlationId, "Update in {0} with id = {1}", _collectionName, item.Id);
+            _logger.Trace(correlationId, "Update in {0} with id = {1}", _tableName, item.Id);
 
             return result;
         }
@@ -330,7 +334,7 @@ namespace PipServices3.Postgres.Persistence
 
             var result = await _collection.FindOneAndUpdateAsync(filterDefinition, updateDefinition, options);
 
-            _logger.Trace(correlationId, "Modify in {0}", _collectionName);
+            _logger.Trace(correlationId, "Modify in {0}", _tableName);
 
             return result;
         }
@@ -344,7 +348,7 @@ namespace PipServices3.Postgres.Persistence
 
             var result = await ModifyAsync(correlationId, Builders<T>.Filter.Eq(x => x.Id, id), updateDefinition);
 
-            _logger.Trace(correlationId, "Modify in {0} with id = {1}", _collectionName, id);
+            _logger.Trace(correlationId, "Modify in {0} with id = {1}", _tableName, id);
 
             return result;
         }
@@ -361,7 +365,7 @@ namespace PipServices3.Postgres.Persistence
             var options = new FindOneAndDeleteOptions<T>();
             var result = await _collection.FindOneAndDeleteAsync(filter, options);
 
-            _logger.Trace(correlationId, "Deleted from {0} with id = {1}", _collectionName, id);
+            _logger.Trace(correlationId, "Deleted from {0} with id = {1}", _tableName, id);
 
             return result;
         }

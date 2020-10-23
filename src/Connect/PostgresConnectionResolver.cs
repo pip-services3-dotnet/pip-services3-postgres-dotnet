@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using PipServices3.Commons.Config;
 using PipServices3.Commons.Errors;
 using PipServices3.Commons.Refer;
+using PipServices3.Commons.Run;
 using PipServices3.Components.Auth;
 using PipServices3.Components.Connect;
 
@@ -91,79 +92,37 @@ namespace PipServices3.Postgres.Connect
                 ValidateConnection(correlationId, connection);
         }
 
-        private string ComposeUri(List<ConnectionParams> connections, CredentialParams credential)
+        private ConfigParams ComposeConfig(List<ConnectionParams> connections, CredentialParams credential)
         {
-            // If there is a uri then return it immediately
-            foreach (var connection in connections)
-            {
-                var fullUri = connection.GetAsNullableString("uri");//connection.Uri;
-                if (fullUri != null) return fullUri;
-            }
+            ConfigParams config = new ConfigParams();
 
-            // Define hosts
-            var hosts = "";
+            // Define connection part
             foreach (var connection in connections)
             {
+                var uri = connection.Uri;
+                if (!string.IsNullOrWhiteSpace(uri)) config["connectionString"] = uri;
+
                 var host = connection.Host;
+                if (!string.IsNullOrWhiteSpace(host)) config["Host"] = host;
+
                 var port = connection.Port;
+                if (port != default) config["Port"] = port.ToString();
 
-                if (hosts.Length > 0)
-                    hosts += ",";
-               hosts += host + (port == 0 ? "" : ":" + port);
+                var database = connection.GetAsNullableString("database");
+                if (!string.IsNullOrWhiteSpace(database)) config["Database"] = database;
             }
-
-            // Define database
-            var database = "";
-            foreach (var connection in connections)
-            {
-                database = connection.GetAsNullableString("database") ?? database;
-            }
-            if (database.Length > 0)
-                database = "/" + database;
 
             // Define authentication part
-            var auth = "";
             if (credential != null)
             {
                 var username = credential.Username;
-                if (username != null)
-                {
-                    var password = credential.Password;
-                    if (password != null)
-                        auth = username + ":" + password + "@";
-                    else
-                        auth = username + "@";
-                }
+                if (!string.IsNullOrWhiteSpace(username)) config["Username"] = username;
+
+                var password = credential.Password;
+                if (!string.IsNullOrWhiteSpace(password)) config["Password"] = password;
             }
 
-            // Define additional parameters parameters
-            var options = ConfigParams.MergeConfigs(connections.ToArray()).Override(credential);
-            options.Remove("uri");
-            options.Remove("host");
-            options.Remove("port");
-            options.Remove("database");
-            options.Remove("username");
-            options.Remove("password");
-            var parameters = "";
-            var keys = options.Keys;
-            foreach (var key in keys)
-            {
-                if (parameters.Length > 0)
-                    parameters += "&";
-
-                parameters += key;
-
-                var value = options.GetAsString(key);
-                if (value != null)
-                    parameters += "=" + value;
-            }
-            if (parameters.Length > 0)
-                parameters = "?" + parameters;
-
-            // Compose uri
-            var uri = "postgres://" + auth + hosts + database + parameters;
-
-            return uri;
+            return config;
         }
 
         /// <summary>
@@ -171,14 +130,14 @@ namespace PipServices3.Postgres.Connect
         /// </summary>
         /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
         /// <returns>resolved URI.</returns>
-        public async Task<string> ResolveAsync(string correlationId)
+        public async Task<ConfigParams> ResolveAsync(string correlationId)
         {
             var connections = await _connectionResolver.ResolveAllAsync(correlationId);
             var credential = await _credentialResolver.LookupAsync(correlationId);
 
             ValidateConnections(correlationId, connections);
 
-            return ComposeUri(connections, credential);
+            return ComposeConfig(connections, credential);
         }
 
     }

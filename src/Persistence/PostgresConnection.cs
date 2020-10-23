@@ -7,6 +7,8 @@ using PipServices3.Commons.Refer;
 using PipServices3.Commons.Run;
 using PipServices3.Components.Log;
 using PipServices3.Postgres.Connect;
+using Npgsql;
+using System.Linq;
 
 namespace PipServices3.Postgres.Persistence
 {
@@ -46,7 +48,9 @@ namespace PipServices3.Postgres.Persistence
     public class PostgresConnection : IReferenceable, IReconfigurable, IOpenable
     {
         private ConfigParams _defaultConfig = ConfigParams.FromTuples(
-            "options.sessions_supported", true
+            "options.connect_timeout", 0,
+            "options.idle_timeout", 10000,
+            "options.max_pool_size", 3
         );
 
         /// <summary>
@@ -62,12 +66,7 @@ namespace PipServices3.Postgres.Persistence
         /// <summary>
         /// The PostgreSQL connection object.
         /// </summary>
-        protected MongoClient _connection;
-
-        /// <summary>
-        /// The PostgreSQL database.
-        /// </summary>
-        protected IMongoDatabase _database;
+        protected NpgsqlConnection _connection;
 
         /// <summary>
         /// The database name.
@@ -79,12 +78,6 @@ namespace PipServices3.Postgres.Persistence
         /// </summary>
         protected CompositeLogger _logger = new CompositeLogger();
 
-
-        /// <summary>
-        /// Determines if the database supports sessions or not
-        /// </summary>
-        private bool _areSessionsSupported = true;
-
         /// <summary>
         /// Creates a new instance of the connection component.
         /// </summary>
@@ -95,18 +88,9 @@ namespace PipServices3.Postgres.Persistence
         /// Gets PostgreSQL connection object.
         /// </summary>
         /// <returns>The PostgreSQL connection object.</returns>
-        public MongoClient GetConnection()
+        public NpgsqlConnection GetConnection()
         {
             return _connection;
-        }
-
-        /// <summary>
-        /// Gets the reference to the connected database.
-        /// </summary>
-        /// <returns>The reference to the connected database.</returns>
-        public IMongoDatabase GetDatabase()
-        {
-            return _database;
         }
 
         /// <summary>
@@ -139,8 +123,6 @@ namespace PipServices3.Postgres.Persistence
             _connectionResolver.Configure(config);
 
             _options = _options.Override(config.GetSection("options"));
-
-            _areSessionsSupported = _options.GetAsBooleanWithDefault("sessions_supported", true);
         }
 
         /// <summary>
@@ -149,7 +131,7 @@ namespace PipServices3.Postgres.Persistence
         /// <returns>true if the component has been opened and false otherwise.</returns>
         public virtual bool IsOpen()
         {
-            return _connection != null && _database != null;
+            return _connection != null;
         }
 
         /// <summary>
@@ -158,32 +140,57 @@ namespace PipServices3.Postgres.Persistence
         /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
         public async virtual Task OpenAsync(string correlationId)
         {
-            var uri = await _connectionResolver.ResolveAsync(correlationId);
+            var config = await _connectionResolver.ResolveAsync(correlationId);
 
             _logger.Trace(correlationId, "Connecting to postgres...");
 
             try
             {
-                _connection = new MongoClient(uri);
-                _databaseName = MongoUrl.Create(uri).DatabaseName;
-                _database = _connection.GetDatabase(_databaseName);
+                var settings = ComposeSettings();
+                var connString = CreateConnectionString(config, settings);
 
-                // Check if connection is alive
-                if (_areSessionsSupported)
-                {
-                    await _connection.StartSessionAsync();
-                }
+                _connection = new NpgsqlConnection(connString);
+                _databaseName = _connection.Database;
+
+                // Try to connect
+                await _connection.OpenAsync();
 
                 _logger.Debug(correlationId, "Connected to postgres database {0}", _databaseName);
             }
             catch (Exception ex)
             {
-                throw new ConnectionException(correlationId, "ConnectFailed", "Connection to postgres failed", ex);
+                throw new ConnectionException(correlationId, "CONNECT_FAILED", "Connection to postgres failed", ex);
             }
-
-            await Task.Delay(0);
         }
 
+        private ConfigParams ComposeSettings()
+        {
+            var maxPoolSize = _options.GetAsNullableInteger("max_pool_size");
+            var connectTimeout = _options.GetAsNullableInteger("connect_timeout");
+            var idleTimeout = _options.GetAsNullableInteger("idle_timeout");
+
+            ConfigParams settings = new ConfigParams();
+
+            if (maxPoolSize.HasValue) settings["Maximum Pool Size"] = maxPoolSize.Value.ToString();
+            if (connectTimeout.HasValue) settings["Timeout"] = connectTimeout.Value.ToString();
+            if (idleTimeout.HasValue) settings["Keepalive"] = idleTimeout.Value.ToString();
+
+            return settings;
+        }
+
+        private static string CreateConnectionString(ConfigParams config, ConfigParams settings)
+        {
+            string connectionString = config.GetAsNullableString("connectionString") ?? JoinParams(config);
+            string settingsString = JoinParams(settings);
+
+            return connectionString + ";" + settingsString;
+        }
+
+        private static string JoinParams(ConfigParams config)
+        { 
+            return string.Join(";", config.Select(x => string.Format("{0}={1}", x.Key, x.Value))); 
+        }
+        
         /// <summary>
         /// Closes component and frees used resources.
         /// </summary>
@@ -191,11 +198,10 @@ namespace PipServices3.Postgres.Persistence
         public async virtual Task CloseAsync(string correlationId)
         {
             // Todo: Properly close the connection
-            _connection = null;
-            _database = null;
-            _databaseName = null;
+            await _connection.CloseAsync();
 
-            await Task.Delay(0);
+            _connection = null;
+            _databaseName = null;
         }
     }
 }
