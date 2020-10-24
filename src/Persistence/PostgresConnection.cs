@@ -139,14 +139,14 @@ namespace PipServices3.Postgres.Persistence
         /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
         public async virtual Task OpenAsync(string correlationId)
         {
-            var config = await _connectionResolver.ResolveAsync(correlationId);
+            var connectionString = await _connectionResolver.ResolveAsync(correlationId);
 
             _logger.Trace(correlationId, "Connecting to postgres...");
 
             try
             {
                 var settings = ComposeSettings();
-                var connString = CreateConnectionString(config, settings);
+                var connString = connectionString.TrimEnd(';') + ";" + JoinParams(settings);
 
                 _connection = new NpgsqlConnection(connString);
                 _databaseName = _connection.Database;
@@ -175,14 +175,6 @@ namespace PipServices3.Postgres.Persistence
             if (idleTimeout.HasValue) settings["Keepalive"] = idleTimeout.Value.ToString();
 
             return settings;
-        }
-
-        private static string CreateConnectionString(ConfigParams config, ConfigParams settings)
-        {
-            string connectionString = config.GetAsNullableString("connectionString") ?? JoinParams(config);
-            string settingsString = JoinParams(settings);
-
-            return connectionString + ";" + settingsString;
         }
 
         private static string JoinParams(ConfigParams config)

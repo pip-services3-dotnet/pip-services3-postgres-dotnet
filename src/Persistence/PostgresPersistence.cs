@@ -12,6 +12,7 @@ using System.Data;
 using System.Text;
 using System.Linq;
 using PipServices3.Commons.Convert;
+using PipServices3.Commons.Reflect;
 
 namespace PipServices3.Postgres.Persistence
 {
@@ -105,7 +106,7 @@ namespace PipServices3.Postgres.Persistence
 
             "options.max_pool_size", 2,
             "options.keep_alive", 1,
-            "options.connect_timeout", 5000,
+            "options.connect_timeout", 5,
             "options.auto_reconnect", true,
             "options.max_page_size", 100,
             "options.debug", true
@@ -165,7 +166,7 @@ namespace PipServices3.Postgres.Persistence
 
             _tableName = tableName;
         }
-
+        
         /// <summary>
         /// Configures component by passing configuration parameters.
         /// </summary>
@@ -257,16 +258,37 @@ namespace PipServices3.Postgres.Persistence
         /// <summary>
         /// Converts object value from internal to public format.
         /// </summary>
-        /// <param name="value">an object in internal format to convert</param>
+        /// <param name="map">an object in internal format to convert</param>
         /// <returns>converted object in public format</returns>
-        protected T ConvertToPublic(AnyValueMap value)
+        protected virtual T ConvertToPublic(AnyValueMap map)
         {
-            return new T();
+            var newMap = ConvertDateTimeToUtc(map);
+
+            var item = new T();
+            ObjectWriter.SetProperties(item, newMap);
+            return item;
         }
 
-        protected AnyValueMap ConvertFromPublic(T value)
+        protected virtual AnyValueMap ConvertFromPublic(T value)
         {
             return new AnyValueMap(MapConverter.ToMap(value));
+        }
+
+        private AnyValueMap ConvertDateTimeToUtc(AnyValueMap map)
+        {
+            AnyValueMap newMap = new AnyValueMap();
+            foreach (var key in map.Keys)
+            {
+                if (map[key] is DateTime time)
+                {
+                    newMap[key] = time.ToUniversalTime();
+                }
+                else
+                {
+                    newMap[key] = map[key];
+                }
+            }
+            return newMap;
         }
 
         /// <summary>
@@ -393,28 +415,61 @@ namespace PipServices3.Postgres.Persistence
         }
 
         /// <summary>
-        /// Generates a list of value parameters to use in SQL statements like: "$1,$2,$3"
+        /// Generates a list of value parameters to use in SQL statements like: "@Param1,@Param2,@Param3"
         /// </summary>
         /// <param name="map">key-value map</param>
         /// <returns>a generated list of value parameters</returns>
-        protected IEnumerable<string> GenerateParameters(AnyValueMap map)
+        protected string GenerateParameters(AnyValueMap map)
         {
             return GenerateParameters(map.Keys.ToList());
         }
 
         /// <summary>
-        /// Generates a list of value parameters to use in SQL statements like: "$1,$2,$3"
+        /// Generates a list of value parameters to use in SQL statements like: "@Param1,@Param2,@Param3"
         /// </summary>
         /// <param name="values">an array with column values</param>
         /// <returns>a generated list of value parameters</returns>
-        protected IEnumerable<string> GenerateParameters<K>(IEnumerable<K> values)
+        protected string GenerateParameters<K>(IEnumerable<K> values)
         {
+            List<string> result = new List<string>();
+
             var index = 1;
             foreach (var value in values)
             {
-                yield return "$" + index;
+                result.Add("@Param" + index);
                 index++;
             }
+
+            return string.Join(",", result);
+        }
+
+        /// <summary>
+        /// Generates a list of column sets to use in UPDATE statements like: column1=@Param1,column2=@Param2
+        /// </summary>
+        /// <param name="map">a key-value map with columns and values</param>
+        /// <returns></returns>
+        protected string GenerateSetParameters(AnyValueMap map)
+        {
+            return GenerateSetParameters(map.Keys.ToList());
+        }
+
+        /// <summary>
+        /// Generates a list of column sets to use in UPDATE statements like: column1=@Param1,column2=@Param2
+        /// </summary>
+        /// <param name="values">an array with column names</param>
+        /// <returns></returns>
+        protected string GenerateSetParameters(IEnumerable<string> values)
+        {
+            var result = "";
+            var index = 1;
+            foreach (var column in values)
+            {
+                if (result != "") result += ",";
+                result += column + "=@Param" + index;
+                index++;
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -583,23 +638,17 @@ namespace PipServices3.Postgres.Persistence
             var map = ConvertFromPublic(item);
             var columns = GenerateColumns(map);
             var @params = GenerateParameters(map);
-            //var values = GenerateValues(map);
 
             var query = "INSERT INTO " + _tableName + " (" + columns + ") VALUES (" + @params + ") RETURNING *";
 
-            using (var cmd = new NpgsqlCommand(query, _client))
-            {
-                SetParameters(cmd, map);
+            var result = await ExecuteReaderAsync(query, cmd => SetParameters(cmd, map));
 
-                var result = await ExecuteReaderAsync(cmd);
+            var newItem = result != null && result.Count == 1
+                ? ConvertToPublic(result[0]) : default;
 
-                var newItem = result != null && result.Count == 1
-                    ? ConvertToPublic(result[0]) : default;
+            _logger.Trace(correlationId, "Created in {0} item {1}", _tableName, newItem);
 
-                _logger.Trace(correlationId, "Created in {0} item {1}", _tableName, newItem);
-
-                return newItem;
-            }
+            return newItem;
         }
 
         /// <summary>
@@ -624,43 +673,46 @@ namespace PipServices3.Postgres.Persistence
 
         private async Task<bool> TableExistAsync(string tableName)
         {
-            var result = await ExecuteReaderAsync("SELECT to_regclass('" + tableName + "')");
-
-            return result.Count > 0
-                && result[0].ContainsKey("to_regclass")
-                && result[0]["to_regclass"] != null;
+            var result = await ExecuteScalarAsync<bool>("SELECT to_regclass('" + tableName + "') IS NOT NULL");
+            return result;
         }
 
-        protected static void SetParameters(NpgsqlCommand cmd, AnyValueMap values)
+        protected virtual void SetParameters(NpgsqlCommand cmd, AnyValueMap map)
         {
-            if (values != null && values.Count > 0)
+            if (map != null && map.Count > 0)
             {
                 int index = 1;
-                foreach (var param in values.Keys)
+                foreach (var key in map.Keys)
                 {
-                    cmd.Parameters.AddWithValue("$" + index, values[param]);
+                    AddParameter(cmd, "Param" + index, map[key]);
                     index++;
                 }
             }
         }
 
-        protected static void SetParameters<K>(NpgsqlCommand cmd, IEnumerable<K> values)
+        protected virtual void SetParameters(NpgsqlCommand cmd, IEnumerable<object> values)
         {
             if (values != null && values.Count() > 0)
             {
                 int index = 1;
                 foreach (var value in values)
                 {
-                    cmd.Parameters.AddWithValue("$" + index, value);
+                    AddParameter(cmd, "Param" + index, value);
                     index++;
                 }
             }
         }
 
-        protected async Task<int> ExecuteNonQuery(string cmdText)
+        protected virtual void AddParameter(NpgsqlCommand cmd, string name, object value)
+        {
+            cmd.Parameters.AddWithValue(name, value);
+        }
+        
+        protected async Task<int> ExecuteNonQuery(string cmdText, Action<NpgsqlCommand> setupCmd = null)
         {
             using (var cmd = new NpgsqlCommand(cmdText, _client))
             {
+                setupCmd?.Invoke(cmd);
                 return await cmd.ExecuteNonQueryAsync();
             }
         }
@@ -670,6 +722,8 @@ namespace PipServices3.Postgres.Persistence
             using (var cmd = new NpgsqlCommand(cmdText, _client))
             {
                 setupCmd?.Invoke(cmd);
+                await cmd.PrepareAsync();
+
                 return await ExecuteReaderAsync(cmd);
             }
         }

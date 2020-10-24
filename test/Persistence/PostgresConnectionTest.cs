@@ -5,31 +5,39 @@ using Xunit;
 namespace PipServices3.Postgres.Persistence
 {
     /// <summary>
-    /// Unit tests for the <c>PostgresPersistenceTest</c> class
+    /// Unit tests for the <c>PostgresConnectionTest</c> class
     /// </summary>
     [Collection("Sequential")]
-    public class PostgresPersistenceTest
+    public class PostgresConnectionTest: IDisposable
     {
-        private PostgresDummyPersistence Db { get; }
+        private PostgresConnection Db { get; }
 
         private string postgresUri;
         private string postgresHost;
         private string postgresPort;
         private string postgresDatabase;
+        private string postgresUsername;
+        private string postgresPassword;
 
-        public PostgresPersistenceTest()
+        public PostgresConnectionTest()
         {
-            Db = new PostgresDummyPersistence();
+            Db = new PostgresConnection();
 
             postgresUri = Environment.GetEnvironmentVariable("POSTGRES_URI");
             postgresHost = Environment.GetEnvironmentVariable("POSTGRES_HOST") ?? "localhost";
-            postgresPort = Environment.GetEnvironmentVariable("POSTGRES_PORT") ?? "27017";
+            postgresPort = Environment.GetEnvironmentVariable("POSTGRES_PORT") ?? "5432";
             postgresDatabase = Environment.GetEnvironmentVariable("POSTGRES_DB") ?? "test";
-
+            postgresUsername = Environment.GetEnvironmentVariable("POSTGRES_USERNAME") ?? "postgres";
+            postgresPassword = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? "postgres";
             if (postgresUri == null && postgresHost == null)
                 return;
 
             if (Db == null) return;
+        }
+
+        public void Dispose()
+        {
+            Db.CloseAsync(null).Wait();
         }
 
         [Fact]
@@ -39,7 +47,9 @@ namespace PipServices3.Postgres.Persistence
                 "connection.uri", postgresUri,
                 "connection.host", postgresHost,
                 "connection.port", postgresPort,
-                "connection.database", postgresDatabase
+                "connection.database", postgresDatabase,
+                "credential.username", postgresUsername,
+                "credential.password", postgresPassword
             ));
 
             Db.OpenAsync(null).Wait();

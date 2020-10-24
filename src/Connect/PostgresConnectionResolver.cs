@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using PipServices3.Commons.Config;
 using PipServices3.Commons.Errors;
@@ -92,45 +93,53 @@ namespace PipServices3.Postgres.Connect
                 ValidateConnection(correlationId, connection);
         }
 
-        private ConfigParams ComposeConfig(List<ConnectionParams> connections, CredentialParams credential)
+        private string ComposeConfig(List<ConnectionParams> connections, CredentialParams credential)
         {
-            ConfigParams config = new ConfigParams();
-
             // Define connection part
+            var connectionConfig = new ConfigParams();
+            string connectionString = null;
             foreach (var connection in connections)
             {
                 var uri = connection.Uri;
-                if (!string.IsNullOrWhiteSpace(uri)) config["connectionString"] = uri;
+                if (!string.IsNullOrWhiteSpace(uri))
+                {
+                    connectionString = uri;
+                }
 
                 var host = connection.Host;
-                if (!string.IsNullOrWhiteSpace(host)) config["Host"] = host;
+                if (!string.IsNullOrWhiteSpace(host)) connectionConfig["Host"] = host;
 
                 var port = connection.Port;
-                if (port != default) config["Port"] = port.ToString();
+                if (port != default) connectionConfig["Port"] = port.ToString();
 
                 var database = connection.GetAsNullableString("database");
-                if (!string.IsNullOrWhiteSpace(database)) config["Database"] = database;
+                if (!string.IsNullOrWhiteSpace(database)) connectionConfig["Database"] = database;
             }
 
             // Define authentication part
+            var credentialConfig = new ConfigParams();
             if (credential != null)
             {
                 var username = credential.Username;
-                if (!string.IsNullOrWhiteSpace(username)) config["Username"] = username;
+                if (!string.IsNullOrWhiteSpace(username)) credentialConfig["Username"] = username;
 
                 var password = credential.Password;
-                if (!string.IsNullOrWhiteSpace(password)) config["Password"] = password;
+                if (!string.IsNullOrWhiteSpace(password)) credentialConfig["Password"] = password;
             }
 
-            return config;
+            return string.Join(";", new[] 
+            {
+                connectionString != null ? connectionString.TrimEnd(';') : JoinParams(connectionConfig), 
+                JoinParams(credentialConfig) 
+            });
         }
 
         /// <summary>
-        /// Resolves PostgreSQL connection URI from connection and credential parameters.
+        /// Resolves PostgreSQL connection string from connection and credential parameters.
         /// </summary>
         /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
-        /// <returns>resolved URI.</returns>
-        public async Task<ConfigParams> ResolveAsync(string correlationId)
+        /// <returns>resolved connection string.</returns>
+        public async Task<string> ResolveAsync(string correlationId)
         {
             var connections = await _connectionResolver.ResolveAllAsync(correlationId);
             var credential = await _credentialResolver.LookupAsync(correlationId);
@@ -140,5 +149,9 @@ namespace PipServices3.Postgres.Connect
             return ComposeConfig(connections, credential);
         }
 
+        private static string JoinParams(ConfigParams config)
+        {
+            return string.Join(";", config.Select(x => string.Format("{0}={1}", x.Key, x.Value)));
+        }
     }
 }
