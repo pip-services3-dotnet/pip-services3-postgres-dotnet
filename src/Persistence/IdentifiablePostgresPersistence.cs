@@ -114,7 +114,7 @@ namespace PipServices3.Postgres.Persistence
         public virtual async Task<List<T>> GetListByIdsAsync(string correlationId, K[] ids)
         {
             var @params = GenerateParameters(ids);
-            var query = "SELECT * FROM " + _tableName + " WHERE id IN (" + @params + ")";
+            var query = "SELECT * FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" IN (" + @params + ")";
 
             var items = await ExecuteReaderAsync(query, cmd => SetParameters(cmd, ids));
 
@@ -132,7 +132,7 @@ namespace PipServices3.Postgres.Persistence
         public virtual async Task<T> GetOneByIdAsync(string correlationId, K id)
         {
             var @params = new[] { id };
-            var query = "SELECT * FROM " + _tableName + " WHERE id = @Param1";
+            var query = "SELECT * FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" = @Param1";
 
             var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, @params))).FirstOrDefault();
 
@@ -180,9 +180,9 @@ namespace PipServices3.Postgres.Persistence
             var setParams = GenerateSetParameters(map);
             var values = GenerateValues(map);
 
-            var query = "INSERT INTO " + _tableName + " (" + columns + ")"
+            var query = "INSERT INTO " + QuoteIdentifier(_tableName) + " (" + columns + ")"
                 + " VALUES (" + @params +")"
-                + " ON CONFLICT (id) DO UPDATE SET " + setParams + " RETURNING *";
+                + " ON CONFLICT (\"id\") DO UPDATE SET " + setParams + " RETURNING *";
 
             var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, map))).FirstOrDefault();
 
@@ -208,8 +208,8 @@ namespace PipServices3.Postgres.Persistence
             var values = GenerateValues(map);
             values.Add(item.Id);
 
-            var query = "UPDATE " + _tableName
-                + " SET " + @params +" WHERE id=@Param" + values.Count + " RETURNING *";
+            var query = "UPDATE " + QuoteIdentifier(_tableName)
+                + " SET " + @params +" WHERE \"id\"=@Param" + values.Count + " RETURNING *";
 
             var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, values))).FirstOrDefault();
 
@@ -236,8 +236,8 @@ namespace PipServices3.Postgres.Persistence
             var values = GenerateValues(map);
             values.Add(id);
 
-            var query = "UPDATE " + _tableName
-                + " SET " + @params + " WHERE id = @Param" + values.Count + " RETURNING *";
+            var query = "UPDATE " + QuoteIdentifier(_tableName)
+                + " SET " + @params + " WHERE \"id\" = @Param" + values.Count + " RETURNING *";
 
             var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, values))).FirstOrDefault();
 
@@ -257,7 +257,7 @@ namespace PipServices3.Postgres.Persistence
         {
             var values = new[] { id };
 
-            var query = "DELETE FROM " + _tableName + " WHERE id = @Param1 RETURNING *";
+            var query = "DELETE FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" = @Param1 RETURNING *";
 
             var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, values))).FirstOrDefault();
 
@@ -275,7 +275,7 @@ namespace PipServices3.Postgres.Persistence
         public virtual async Task DeleteByIdsAsync(string correlationId, K[] ids)
         {
             var @params = GenerateParameters(ids);
-            var query = "DELETE FROM " + _tableName + " WHERE id IN (" + @params +")";
+            var query = "DELETE FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" IN (" + @params +")";
 
             var result = await ExecuteNonQuery(query, cmd => SetParameters(cmd, ids));
 

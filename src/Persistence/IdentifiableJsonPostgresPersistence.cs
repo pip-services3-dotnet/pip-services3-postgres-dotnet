@@ -22,8 +22,8 @@ namespace PipServices3.Postgres.Persistence
         /// <param name="dataType">type of the data column (default: JSONB)</param>
         protected void EnsureTable(string idType = "TEXT", string dataType = "JSONB")
         { 
-            var query = "CREATE TABLE IF NOT EXISTS " + _tableName
-            + " (id " + idType + " PRIMARY KEY, data " + dataType + ")";
+            var query = "CREATE TABLE IF NOT EXISTS " + QuoteIdentifier(_tableName)
+            + " (\"id\" " + idType + " PRIMARY KEY, \"data\" " + dataType + ")";
 
             AutoCreateObject(query);
         }
@@ -51,7 +51,7 @@ namespace PipServices3.Postgres.Persistence
         protected override AnyValueMap ConvertFromPublic(T value)
         {
             if (value == null) return null;
-            return AnyValueMap.FromTuples("id", value.Id, "data", value);
+            return AnyValueMap.FromTuples("id", value.Id, "data", base.ConvertFromPublic(value));
         }
 
         protected override void AddParameter(NpgsqlCommand cmd, string name, object value)
@@ -79,7 +79,7 @@ namespace PipServices3.Postgres.Persistence
 
             var values = new object[] { id, data.GetAsObject() };
 
-            var query = "UPDATE " + _tableName + " SET data=data||@Param2 WHERE id=@Param1 RETURNING *";
+            var query = "UPDATE " + _tableName + " SET \"data\"=\"data\"||@Param2 WHERE \"id\"=@Param1 RETURNING *";
 
             var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, values))).FirstOrDefault();
 

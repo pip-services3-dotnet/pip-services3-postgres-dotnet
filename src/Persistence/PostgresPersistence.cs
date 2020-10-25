@@ -13,6 +13,8 @@ using System.Text;
 using System.Linq;
 using PipServices3.Commons.Convert;
 using PipServices3.Commons.Reflect;
+using System.Reflection;
+using System.Runtime.Serialization;
 
 namespace PipServices3.Postgres.Persistence
 {
@@ -154,6 +156,7 @@ namespace PipServices3.Postgres.Persistence
         private IReferences _references;
         private bool _localConnection;
         private bool _opened;
+        private Dictionary<string, string> _namesMap = new Dictionary<string, string>(); 
 
         /// <summary>
         /// Creates a new instance of the persistence component.
@@ -165,8 +168,27 @@ namespace PipServices3.Postgres.Persistence
                 throw new ArgumentNullException(nameof(tableName));
 
             _tableName = tableName;
+
+            _namesMap = CreateNamesMap();
         }
-        
+
+        private Dictionary<string, string> CreateNamesMap()
+        {
+            var attrType = typeof(DataMemberAttribute);
+            var result = new Dictionary<string, string>();
+
+            foreach (PropertyInfo prop in typeof(T).GetProperties())
+            {
+                var memberName = (prop.GetCustomAttributes(attrType, true).FirstOrDefault() is DataMemberAttribute dataMemberAttr) 
+                    ? dataMemberAttr.Name 
+                    : prop.Name.ToLower();
+
+                result.Add(prop.Name, memberName);
+            }
+
+            return result;
+        }
+
         /// <summary>
         /// Configures component by passing configuration parameters.
         /// </summary>
@@ -233,13 +255,13 @@ namespace PipServices3.Postgres.Persistence
             builder.Append(" INDEX IF NOT EXISTS ")
                 .Append(name)
                 .Append(" ON ")
-                .Append(_tableName);
+                .Append(QuoteIdentifier(_tableName));
 
             if (!string.IsNullOrWhiteSpace(options.Type))
                 builder.Append(" ")
                     .Append(options.Type);
 
-            var fields = string.Join(", ", keys.Select(x => x.Key + (x.Value ? "" : " DESC")));
+            var fields = string.Join(", ", keys.Select(x => QuoteIdentifier(x.Key) + (x.Value ? "" : " DESC")));
 
             builder.Append("(").Append(fields).Append(")");
 
@@ -263,15 +285,63 @@ namespace PipServices3.Postgres.Persistence
         protected virtual T ConvertToPublic(AnyValueMap map)
         {
             var newMap = ConvertDateTimeToUtc(map);
+            newMap = ConvertNamesToPublic(newMap);
 
             var item = new T();
             ObjectWriter.SetProperties(item, newMap);
+            
             return item;
         }
 
         protected virtual AnyValueMap ConvertFromPublic(T value)
         {
-            return new AnyValueMap(MapConverter.ToMap(value));
+            var map = new AnyValueMap(MapConverter.ToMap(value));
+            map = ConvertNamesFromPublic(map);
+            
+            return map;
+        }
+
+        protected string QuoteIdentifier(string value)
+        {
+            if (value == null || value == "") return value;
+
+            if (value[0] == '"') return value;
+
+            return '"' + value + '"';
+        }
+
+        private AnyValueMap ConvertNamesToPublic(AnyValueMap map)
+        {
+            AnyValueMap newMap = new AnyValueMap();
+
+            foreach (var key in map.Keys)
+            {
+                var name = _namesMap
+                    .Where(x => x.Value == key)
+                    .Select(x => x.Key)
+                    .FirstOrDefault();
+
+                newMap[name] = map[key];
+            }
+
+            return newMap;
+        }
+
+        private AnyValueMap ConvertNamesFromPublic(AnyValueMap map)
+        {
+            AnyValueMap newMap = new AnyValueMap();
+
+            foreach (var key in map.Keys)
+            {
+                var name = _namesMap
+                    .Where(x => x.Key == key)
+                    .Select(x => x.Value)
+                    .FirstOrDefault();
+
+                newMap[name] = map[key];
+            }
+
+            return newMap;
         }
 
         private AnyValueMap ConvertDateTimeToUtc(AnyValueMap map)
@@ -411,7 +481,7 @@ namespace PipServices3.Postgres.Persistence
         /// <returns>a generated list of column names</returns>
         protected string GenerateColumns(IEnumerable<string> values)
         {
-            return string.Join(",", values);
+            return string.Join(",", values.Select(x => QuoteIdentifier(x)));
         }
 
         /// <summary>
@@ -465,7 +535,7 @@ namespace PipServices3.Postgres.Persistence
             foreach (var column in values)
             {
                 if (result != "") result += ",";
-                result += column + "=@Param" + index;
+                result += QuoteIdentifier(column) + "=@Param" + index;
                 index++;
             }
 
@@ -497,7 +567,7 @@ namespace PipServices3.Postgres.Persistence
                 PagingParams paging = null, string sort = null, string select = null)
         {
             select = string.IsNullOrWhiteSpace(select) ? "*" : select;
-            var query = string.Format("SELECT {0} FROM {1}", select, _tableName);
+            var query = string.Format("SELECT {0} FROM {1}", select, QuoteIdentifier(_tableName));
 
             // Adjust max item count based on configuration
             paging = paging ?? new PagingParams();
@@ -538,7 +608,7 @@ namespace PipServices3.Postgres.Persistence
         /// <returns></returns>
         protected virtual async Task<long> GetCountByFilterAsync(string correlationId, string filter)
         {
-            var query = "SELECT COUNT(*) AS count FROM " + _tableName;
+            var query = "SELECT COUNT(*) AS count FROM " + QuoteIdentifier(_tableName);
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
@@ -565,7 +635,7 @@ namespace PipServices3.Postgres.Persistence
             string sort = null, string select = null)
         {
             select = string.IsNullOrWhiteSpace(select) ? "*" : select;
-            var query = string.Format("SELECT {0} FROM {1}", select, _tableName);
+            var query = string.Format("SELECT {0} FROM {1}", select, QuoteIdentifier(_tableName));
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
@@ -603,7 +673,7 @@ namespace PipServices3.Postgres.Persistence
 
             var pos = new Random().Next(0, Convert.ToInt32(count) - 1);
 
-            var query = "SELECT * FROM " + _tableName;
+            var query = "SELECT * FROM " + QuoteIdentifier(_tableName);
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
@@ -639,7 +709,7 @@ namespace PipServices3.Postgres.Persistence
             var columns = GenerateColumns(map);
             var @params = GenerateParameters(map);
 
-            var query = "INSERT INTO " + _tableName + " (" + columns + ") VALUES (" + @params + ") RETURNING *";
+            var query = "INSERT INTO " + QuoteIdentifier(_tableName) + " (" + columns + ") VALUES (" + @params + ") RETURNING *";
 
             var result = await ExecuteReaderAsync(query, cmd => SetParameters(cmd, map));
 
@@ -661,7 +731,7 @@ namespace PipServices3.Postgres.Persistence
         /// <param name="filterDefinition">(optional) a filter JSON object.</param>
         public virtual async Task DeleteByFilterAsync(string correlationId, string filter)
         {
-            var query = "DELETE FROM " + _tableName;
+            var query = "DELETE FROM " + QuoteIdentifier(_tableName);
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;

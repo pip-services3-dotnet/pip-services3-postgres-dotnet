@@ -12,7 +12,7 @@ namespace PipServices3.Postgres.Persistence
         public PostgresDummyPersistence()
             : base("dummies")
         {
-            AutoCreateObject("CREATE TABLE dummies (id TEXT PRIMARY KEY, key TEXT, content TEXT, createtimeutc TIMESTAMP with time zone)"); 
+            AutoCreateObject("CREATE TABLE dummies (id TEXT PRIMARY KEY, key TEXT, content TEXT, create_time_utc TIMESTAMP with time zone)"); 
             EnsureIndex("dummies_key", new Dictionary<string, bool> { { "key", true } }, new IndexOptions { Unique = true });
         }
 
