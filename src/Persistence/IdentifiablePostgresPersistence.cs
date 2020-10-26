@@ -116,7 +116,7 @@ namespace PipServices3.Postgres.Persistence
             var @params = GenerateParameters(ids);
             var query = "SELECT * FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" IN (" + @params + ")";
 
-            var items = await ExecuteReaderAsync(query, cmd => SetParameters(cmd, ids));
+            var items = await ExecuteReaderAsync(query, ids);
 
             _logger.Trace(correlationId, $"Retrieved {items.Count} from {_tableName}");
 
@@ -134,7 +134,7 @@ namespace PipServices3.Postgres.Persistence
             var @params = new[] { id };
             var query = "SELECT * FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" = @Param1";
 
-            var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, @params))).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(query, @params)).FirstOrDefault();
 
             if (result == null)
             {
@@ -184,7 +184,7 @@ namespace PipServices3.Postgres.Persistence
                 + " VALUES (" + @params +")"
                 + " ON CONFLICT (\"id\") DO UPDATE SET " + setParams + " RETURNING *";
 
-            var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, map))).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(query, map)).FirstOrDefault();
 
             _logger.Trace(correlationId, "Set in {0} with id = {1}", _tableName, item.Id);
 
@@ -211,7 +211,7 @@ namespace PipServices3.Postgres.Persistence
             var query = "UPDATE " + QuoteIdentifier(_tableName)
                 + " SET " + @params +" WHERE \"id\"=@Param" + values.Count + " RETURNING *";
 
-            var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, values))).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(query, values)).FirstOrDefault();
 
             _logger.Trace(correlationId, "Update in {0} with id = {1}", _tableName, item.Id);
             
@@ -239,7 +239,7 @@ namespace PipServices3.Postgres.Persistence
             var query = "UPDATE " + QuoteIdentifier(_tableName)
                 + " SET " + @params + " WHERE \"id\" = @Param" + values.Count + " RETURNING *";
 
-            var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, values))).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(query, values)).FirstOrDefault();
 
             _logger.Trace(correlationId, "Updated partially in {0} with id = {1}", _tableName, id);
 
@@ -259,7 +259,7 @@ namespace PipServices3.Postgres.Persistence
 
             var query = "DELETE FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" = @Param1 RETURNING *";
 
-            var result = (await ExecuteReaderAsync(query, cmd => SetParameters(cmd, values))).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(query, values)).FirstOrDefault();
 
             _logger.Trace(correlationId, "Deleted from {0} with id = {1}", _tableName, id);
 
@@ -277,7 +277,7 @@ namespace PipServices3.Postgres.Persistence
             var @params = GenerateParameters(ids);
             var query = "DELETE FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" IN (" + @params +")";
 
-            var result = await ExecuteNonQuery(query, cmd => SetParameters(cmd, ids));
+            var result = await ExecuteNonQuery(query, ids);
 
             _logger.Trace(correlationId, $"Deleted {result} from {_tableName}");
         }

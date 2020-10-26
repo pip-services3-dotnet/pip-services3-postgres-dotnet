@@ -711,7 +711,7 @@ namespace PipServices3.Postgres.Persistence
 
             var query = "INSERT INTO " + QuoteIdentifier(_tableName) + " (" + columns + ") VALUES (" + @params + ") RETURNING *";
 
-            var result = await ExecuteReaderAsync(query, cmd => SetParameters(cmd, map));
+            var result = await ExecuteReaderAsync(query, map);
 
             var newItem = result != null && result.Count == 1
                 ? ConvertToPublic(result[0]) : default;
@@ -747,19 +747,6 @@ namespace PipServices3.Postgres.Persistence
             return result;
         }
 
-        protected virtual void SetParameters(NpgsqlCommand cmd, AnyValueMap map)
-        {
-            if (map != null && map.Count > 0)
-            {
-                int index = 1;
-                foreach (var key in map.Keys)
-                {
-                    AddParameter(cmd, "Param" + index, map[key]);
-                    index++;
-                }
-            }
-        }
-
         protected virtual void SetParameters(NpgsqlCommand cmd, IEnumerable<object> values)
         {
             if (values != null && values.Count() > 0)
@@ -777,21 +764,31 @@ namespace PipServices3.Postgres.Persistence
         {
             cmd.Parameters.AddWithValue(name, value);
         }
+
+        protected async Task<int> ExecuteNonQuery(string cmdText, AnyValueMap map)
+        {
+            return await ExecuteNonQuery(cmdText, map.Values);
+        }
         
-        protected async Task<int> ExecuteNonQuery(string cmdText, Action<NpgsqlCommand> setupCmd = null)
+        protected async Task<int> ExecuteNonQuery(string cmdText, IEnumerable<object> values = null)
         {
             using (var cmd = new NpgsqlCommand(cmdText, _client))
             {
-                setupCmd?.Invoke(cmd);
+                SetParameters(cmd, values);
                 return await cmd.ExecuteNonQueryAsync();
             }
         }
 
-        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string cmdText, Action<NpgsqlCommand> setupCmd = null)
+        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string cmdText, AnyValueMap map)
+        {
+            return await ExecuteReaderAsync(cmdText, map.Values);
+        }
+
+        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string cmdText, IEnumerable<object> values = null)
         {
             using (var cmd = new NpgsqlCommand(cmdText, _client))
             {
-                setupCmd?.Invoke(cmd);
+                SetParameters(cmd, values);
                 await cmd.PrepareAsync();
 
                 return await ExecuteReaderAsync(cmd);
