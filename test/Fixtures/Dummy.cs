@@ -18,5 +18,8 @@ namespace PipServices3.Postgres.Persistence
 
         [DataMember(Name = "create_time_utc")]
         public DateTime CreateTimeUtc { get; set; }
+
+        [DataMember(Name = "sub_dummy")]
+        public SubDummy SubDummy { get; set; } = new SubDummy();
     }
 }

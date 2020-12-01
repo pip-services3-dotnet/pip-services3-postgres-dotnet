@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using PipServices3.Commons.Config;
@@ -156,7 +157,6 @@ namespace PipServices3.Postgres.Persistence
         private IReferences _references;
         private bool _localConnection;
         private bool _opened;
-        private Dictionary<string, string> _namesMap = new Dictionary<string, string>(); 
 
         /// <summary>
         /// Creates a new instance of the persistence component.
@@ -168,25 +168,6 @@ namespace PipServices3.Postgres.Persistence
                 throw new ArgumentNullException(nameof(tableName));
 
             _tableName = tableName;
-
-            _namesMap = CreateNamesMap();
-        }
-
-        private Dictionary<string, string> CreateNamesMap()
-        {
-            var attrType = typeof(DataMemberAttribute);
-            var result = new Dictionary<string, string>();
-
-            foreach (PropertyInfo prop in typeof(T).GetProperties())
-            {
-                var memberName = (prop.GetCustomAttributes(attrType, true).FirstOrDefault() is DataMemberAttribute dataMemberAttr) 
-                    ? dataMemberAttr.Name 
-                    : prop.Name.ToLower();
-
-                result.Add(prop.Name, memberName);
-            }
-
-            return result;
         }
 
         /// <summary>
@@ -284,19 +265,20 @@ namespace PipServices3.Postgres.Persistence
         /// <returns>converted object in public format</returns>
         protected virtual T ConvertToPublic(AnyValueMap map)
         {
-            var newMap = ConvertDateTimeToUtc(map);
-            newMap = ConvertNamesToPublic(newMap);
-
-            var item = new T();
-            ObjectWriter.SetProperties(item, newMap);
-            
-            return item;
+            var json = JsonConverter.ToJson(map);
+            T obj = JsonConverter.FromJson<T>(json);
+            return obj;
         }
 
+        /// <summary>
+        /// Converts object value from public to internal format.
+        /// </summary>
+        /// <param name="value">an object in public format to convert</param>
+        /// <returns>converted object in internal format</returns>
         protected virtual AnyValueMap ConvertFromPublic(T value)
         {
-            var map = new AnyValueMap(MapConverter.ToMap(value));
-            map = ConvertNamesFromPublic(map);
+            var json = JsonConverter.ToJson(value);
+            var map = new AnyValueMap(MapConverter.ToMap(JsonConverter.FromJson(json)));
             
             return map;
         }
@@ -308,57 +290,6 @@ namespace PipServices3.Postgres.Persistence
             if (value[0] == '"') return value;
 
             return '"' + value + '"';
-        }
-
-        private AnyValueMap ConvertNamesToPublic(AnyValueMap map)
-        {
-            AnyValueMap newMap = new AnyValueMap();
-
-            foreach (var key in map.Keys)
-            {
-                var name = _namesMap
-                    .Where(x => x.Value == key)
-                    .Select(x => x.Key)
-                    .FirstOrDefault();
-
-                newMap[name] = map[key];
-            }
-
-            return newMap;
-        }
-
-        private AnyValueMap ConvertNamesFromPublic(AnyValueMap map)
-        {
-            AnyValueMap newMap = new AnyValueMap();
-
-            foreach (var key in map.Keys)
-            {
-                var name = _namesMap
-                    .Where(x => x.Key == key)
-                    .Select(x => x.Value)
-                    .FirstOrDefault();
-
-                newMap[name] = map[key];
-            }
-
-            return newMap;
-        }
-
-        private AnyValueMap ConvertDateTimeToUtc(AnyValueMap map)
-        {
-            AnyValueMap newMap = new AnyValueMap();
-            foreach (var key in map.Keys)
-            {
-                if (map[key] is DateTime time)
-                {
-                    newMap[key] = time.ToUniversalTime();
-                }
-                else
-                {
-                    newMap[key] = map[key];
-                }
-            }
-            return newMap;
         }
 
         /// <summary>
@@ -578,7 +509,7 @@ namespace PipServices3.Postgres.Persistence
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
 
-            if (!string.IsNullOrWhiteSpace(filter))
+            if (!string.IsNullOrWhiteSpace(sort))
                 query += " ORDER BY " + sort;
 
             if (skip >= 0) query += " OFFSET " + skip;
@@ -762,6 +693,12 @@ namespace PipServices3.Postgres.Persistence
 
         protected virtual void AddParameter(NpgsqlCommand cmd, string name, object value)
         {
+            if (value is T || value is Dictionary<string, object>)
+            {
+                cmd.Parameters.AddWithValue(name, NpgsqlTypes.NpgsqlDbType.Jsonb, value);
+                return;
+            }
+
             cmd.Parameters.AddWithValue(name, value);
         }
 
@@ -799,6 +736,14 @@ namespace PipServices3.Postgres.Persistence
         {
             using (var reader = await cmd.ExecuteReaderAsync())
             {
+                var schemaTable = reader.GetSchemaTable();
+                var columnTypes = new Dictionary<string, string>();
+
+				foreach (DataRow row in schemaTable.Rows)
+				{
+                    columnTypes[row["ColumnName"].ToString()] = row["DataTypeName"].ToString();
+				}
+
                 DataTable table = new DataTable();
                 table.Load(reader);
 
@@ -808,10 +753,23 @@ namespace PipServices3.Postgres.Persistence
                     AnyValueMap map = new AnyValueMap();
                     foreach (DataColumn column in table.Columns)
                     {
+                        var columnType = columnTypes.TryGetValue(column.ColumnName, out string type) ? type : null;
+
                         var value = row[column];
-                        if (row[column] != DBNull.Value)
+                        if (value != DBNull.Value)
                         {
-                            map[column.ColumnName] = value;
+                            if (columnType == "jsonb")
+                            {
+                                map[column.ColumnName] = new AnyValueMap(MapConverter.ToMap(JsonConverter.FromJson(value.ToString())));
+                            }
+                            else if (value is DateTime time)
+                            {
+                                map[column.ColumnName] = time.ToUniversalTime();
+                            }
+                            else
+                            {
+                                map[column.ColumnName] = value;
+                            }
                         }
                     }
 

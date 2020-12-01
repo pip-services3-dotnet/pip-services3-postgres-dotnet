@@ -13,7 +13,7 @@ namespace PipServices3.Postgres.Persistence
             EnsureIndex("dummies_json_key", new Dictionary<string, bool> { { "(data->>'key')", true } }, new IndexOptions { Unique = true });
         }
 
-        public async Task<DataPage<Dummy>> GetPageByFilterAsync(string correlationId, FilterParams filter, PagingParams paging)
+		public async Task<DataPage<Dummy>> GetPageByFilterAsync(string correlationId, FilterParams filter, PagingParams paging)
         {
             filter ??= new FilterParams();
             var key = filter.GetAsNullableString("key");

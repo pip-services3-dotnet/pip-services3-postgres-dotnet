@@ -1,6 +1,7 @@
 ﻿using Npgsql;
 using PipServices3.Commons.Convert;
 using PipServices3.Commons.Data;
+using PipServices3.Commons.Data.Mapper;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -37,7 +38,7 @@ namespace PipServices3.Postgres.Persistence
         {
             if (map != null && map.TryGetValue("data", out object value) && value != null)
             {
-                return JsonConverter.FromJson<T>(value.ToString());
+                return base.ConvertToPublic(value as AnyValueMap);
             }
 
             return default;
@@ -52,17 +53,6 @@ namespace PipServices3.Postgres.Persistence
         {
             if (value == null) return null;
             return AnyValueMap.FromTuples("id", value.Id, "data", base.ConvertFromPublic(value));
-        }
-
-        protected override void AddParameter(NpgsqlCommand cmd, string name, object value)
-        {
-            if (value is T || value is Dictionary<string, object>)
-            {
-                cmd.Parameters.AddWithValue(name, NpgsqlTypes.NpgsqlDbType.Jsonb, value);
-                return;
-            }
-
-            base.AddParameter(cmd, name, value);
         }
 
         ///// <summary>

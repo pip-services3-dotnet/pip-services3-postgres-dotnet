@@ -1,9 +1,10 @@
 ﻿
-using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-
+using PipServices3.Commons.Convert;
 using PipServices3.Commons.Data;
+using PipServices3.Commons.Reflect;
 
 namespace PipServices3.Postgres.Persistence
 {
@@ -12,10 +13,35 @@ namespace PipServices3.Postgres.Persistence
         public PostgresDummyPersistence()
             : base("dummies")
         {
-            AutoCreateObject("CREATE TABLE dummies (id TEXT PRIMARY KEY, key TEXT, content TEXT, create_time_utc TIMESTAMP with time zone)"); 
+            AutoCreateObject("CREATE TABLE dummies (id TEXT PRIMARY KEY, key TEXT, content TEXT, create_time_utc TIMESTAMP with time zone, sub_dummy JSONB)"); 
             EnsureIndex("dummies_key", new Dictionary<string, bool> { { "key", true } }, new IndexOptions { Unique = true });
         }
 
+		//protected override Dummy OnConvertToPublic(AnyValueMap map)
+		//{
+  //          Dummy dummy = new Dummy();
+
+  //          ObjectWriter.SetProperties(dummy, map);
+
+  //          if (map.TryGetValue(nameof(dummy.SubDummy), out object subDummyJson))
+  //          {
+  //              var subDummyMap = new AnyValueMap(JsonConverter.ToMap(subDummyJson.ToString()));
+  //              dummy.SubDummy = ConvertSubDummyToPublic(subDummyMap);
+  //          }
+
+  //          return dummy;
+		//}
+
+  //      private SubDummy ConvertSubDummyToPublic(AnyValueMap map)
+  //      {
+  //          SubDummy subDummy = new SubDummy();
+  //          subDummy.Type = map.GetAsNullableString(nameof(subDummy.Type));
+
+  //          var arrayOfDouble = map.GetAsObject(nameof(subDummy.ArrayOfDouble)) as IEnumerable<object>;
+  //          subDummy.ArrayOfDouble = arrayOfDouble.Select(x => System.Convert.ToDouble(x)).ToArray();
+  //          return subDummy;
+  //      }
+		
         public async Task<DataPage<Dummy>> GetPageByFilterAsync(string correlationId, FilterParams filter, PagingParams paging)
         {
             filter ??= new FilterParams();

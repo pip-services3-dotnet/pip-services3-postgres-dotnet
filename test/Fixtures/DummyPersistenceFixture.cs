@@ -10,8 +10,22 @@ namespace PipServices3.Postgres.Fixtures
 {
     public class DummyPersistenceFixture
     {
-        private Dummy _dummy1 = new Dummy { Id = null, Key = "Key 1", Content = "Content 1", CreateTimeUtc = DateTime.UtcNow };
-        private Dummy _dummy2 = new Dummy { Id = null, Key = "Key 2", Content = "Content 2", CreateTimeUtc = DateTime.UtcNow };
+        private Dummy _dummy1 = new Dummy 
+        { 
+            Id = null, 
+            Key = "Key 1", 
+            Content = "Content 1", 
+            CreateTimeUtc = DateTime.UtcNow,
+            SubDummy = new SubDummy { Type = "some type", ArrayOfDouble = new double[] { 10, 10 } } 
+        };
+        private Dummy _dummy2 = new Dummy 
+        { 
+            Id = null, 
+            Key = "Key 2", 
+            Content = "Content 2", 
+            CreateTimeUtc = DateTime.UtcNow,
+            SubDummy = new SubDummy { Type = "some type", ArrayOfDouble = new double[] { 2, 2 } }
+        };
 
         private IDummyPersistence _persistence;
 
@@ -27,18 +41,24 @@ namespace PipServices3.Postgres.Fixtures
 
             Assert.NotNull(dummy1);
             Assert.NotNull(dummy1.Id);
+            Assert.NotNull(dummy1.SubDummy);
             Assert.Equal(_dummy1.Key, dummy1.Key);
             Assert.Equal(_dummy1.Content, dummy1.Content);
             Assert.Equal(_dummy1.CreateTimeUtc, dummy1.CreateTimeUtc, TimeSpan.FromMilliseconds(1000));
+            Assert.Equal(_dummy1.SubDummy.Type, dummy1.SubDummy.Type);
+            Assert.Equal(_dummy1.SubDummy.ArrayOfDouble, dummy1.SubDummy.ArrayOfDouble);
 
             // Create another dummy
             var dummy2 = await _persistence.CreateAsync(null, _dummy2);
 
             Assert.NotNull(dummy2);
             Assert.NotNull(dummy2.Id);
+            Assert.NotNull(dummy2.SubDummy);
             Assert.Equal(_dummy2.Key, dummy2.Key);
             Assert.Equal(_dummy2.Content, dummy2.Content);
             Assert.Equal(_dummy2.CreateTimeUtc, dummy2.CreateTimeUtc, TimeSpan.FromMilliseconds(1000));
+            Assert.Equal(_dummy2.SubDummy.Type, dummy2.SubDummy.Type);
+            Assert.Equal(_dummy2.SubDummy.ArrayOfDouble, dummy2.SubDummy.ArrayOfDouble);
 
             var page = await _persistence.GetPageByFilterAsync(null, null, null);
             Assert.NotNull(page);
@@ -48,19 +68,25 @@ namespace PipServices3.Postgres.Fixtures
             dummy1.Content = "Updated Content 1";
             var result = await _persistence.UpdateAsync(null, dummy1);
             Assert.NotNull(result);
+            Assert.NotNull(result.SubDummy);
             Assert.Equal(dummy1.Id, result.Id);
             Assert.Equal(dummy1.Key, result.Key);
             Assert.Equal(dummy1.Content, result.Content);
             Assert.Equal(dummy1.CreateTimeUtc, result.CreateTimeUtc, TimeSpan.FromMilliseconds(1000));
+            Assert.Equal(dummy1.SubDummy.Type, result.SubDummy.Type);
+            Assert.Equal(dummy1.SubDummy.ArrayOfDouble, result.SubDummy.ArrayOfDouble);
 
             // Set the dummy
             dummy1.Content = "Updated Content 2";
             result = await _persistence.SetAsync(null, dummy1);
             Assert.NotNull(result);
+            Assert.NotNull(result.SubDummy);
             Assert.Equal(dummy1.Id, result.Id);
             Assert.Equal(dummy1.Key, result.Key);
             Assert.Equal(dummy1.Content, result.Content);
             Assert.Equal(dummy1.CreateTimeUtc, result.CreateTimeUtc, TimeSpan.FromMilliseconds(1000));
+            Assert.Equal(dummy1.SubDummy.Type, result.SubDummy.Type);
+            Assert.Equal(dummy1.SubDummy.ArrayOfDouble, result.SubDummy.ArrayOfDouble);
 
             // Partially update the dummy
             result = await _persistence.UpdatePartially(null, dummy1.Id,
