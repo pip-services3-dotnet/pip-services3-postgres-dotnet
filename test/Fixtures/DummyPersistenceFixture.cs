@@ -64,6 +64,10 @@ namespace PipServices3.Postgres.Fixtures
             Assert.NotNull(page);
             Assert.Equal(2, page.Data.Count);
 
+            page = await _persistence.GetPageByFilterAsync(null, FilterParams.FromTuples("key", _dummy2.Key), null);
+            Assert.NotNull(page);
+            Assert.Single(page.Data);
+
             // Update the dummy
             dummy1.Content = "Updated Content 1";
             var result = await _persistence.UpdateAsync(null, dummy1);

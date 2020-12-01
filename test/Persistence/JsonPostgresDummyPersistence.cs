@@ -9,32 +9,29 @@ namespace PipServices3.Postgres.Persistence
         public JsonPostgresDummyPersistence()
             : base("dummies_json")
         {
-            EnsureTable();
+            EnsureTable("VARCHAR(32)", "JSONB");
             EnsureIndex("dummies_json_key", new Dictionary<string, bool> { { "(data->>'key')", true } }, new IndexOptions { Unique = true });
         }
 
 		public async Task<DataPage<Dummy>> GetPageByFilterAsync(string correlationId, FilterParams filter, PagingParams paging)
+		{
+			return await base.GetPageByFilterAsync(correlationId, ComposeFilter(filter), paging, null, null);
+		}
+
+		public async Task<long> GetCountByFilterAsync(string correlationId, FilterParams filter)
         {
-            filter ??= new FilterParams();
-            var key = filter.GetAsNullableString("key");
-
-            var filterCondition = "";
-            if (key != null)
-                filterCondition += "data->key='" + key + "'";
-
-            return await base.GetPageByFilterAsync(correlationId, filterCondition, paging, null, null);
+            return await base.GetCountByFilterAsync(correlationId, ComposeFilter(filter));
         }
 
-        public async Task<long> GetCountByFilterAsync(string correlationId, FilterParams filter)
+        private static string ComposeFilter(FilterParams filter)
         {
             filter ??= new FilterParams();
             var key = filter.GetAsNullableString("key");
 
             var filterCondition = "";
             if (key != null)
-                filterCondition += "data->key='" + key + "'";
-
-            return await base.GetCountByFilterAsync(correlationId, filterCondition);
+                filterCondition += "data->>'key'='" + key + "'";
+            return filterCondition;
         }
     }
 }

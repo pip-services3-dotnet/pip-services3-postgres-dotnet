@@ -287,7 +287,7 @@ namespace PipServices3.Postgres.Persistence
         {
             if (value == null || value == "") return value;
 
-            if (value[0] == '"') return value;
+            if (value[0] == '"' || value[0] == '(') return value;
 
             return '"' + value + '"';
         }
