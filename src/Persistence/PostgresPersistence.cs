@@ -11,11 +11,7 @@ using PipServices3.Components.Log;
 using Npgsql;
 using System.Data;
 using System.Text;
-using System.Linq;
 using PipServices3.Commons.Convert;
-using PipServices3.Commons.Reflect;
-using System.Reflection;
-using System.Runtime.Serialization;
 
 namespace PipServices3.Postgres.Persistence
 {
