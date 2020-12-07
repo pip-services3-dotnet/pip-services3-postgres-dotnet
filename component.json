@@ -1,6 +1,6 @@
 {
-    "name": "pip-services3-postgres",
+    "name": "pip-services3-postgres-dotnet",
     "registry": "pipdevs",
     "version": "3.0.3",
-    "build": "0"
+    "build": 0
 }
