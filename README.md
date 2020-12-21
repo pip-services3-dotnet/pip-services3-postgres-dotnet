@@ -1,12 +1,12 @@
 # <img src="https://uploads-ssl.webflow.com/5ea5d3315186cf5ec60c3ee4/5edf1c94ce4c859f2b188094_logo.svg" alt="Pip.Services Logo" width="200"> <br/> PostgreSQL components for .NET
 
-This module is a part of the [Pip.Services](http://pipservices.org) polyglot microservices toolkit.
+This module is a part of the [Pip.Services](http://pipservices.org) polyglot microservices toolkit. It provides a set of components to implement PostgreSQL persistence.
+
 
 The module contains the following packages:
- 
-- **Build** - a standard factory for constructing components
-- **Connect** - instruments for configuring connections to the database.
-- **Persistence** - abstract classes for working with the database that can be used for connecting to collections and performing basic CRUD operations
+- **Build** - Factory to create PostreSQL persistence components.
+- **Connect** - Connection component to configure PostgreSQL connection to database.
+- **Persistence** - abstract persistence components to perform basic CRUD operations.
 
 <a name="links"></a> Quick links:
 
@@ -195,7 +195,6 @@ Configuration for your microservice that includes postgresql persistence may loo
 ...
 {{#if POSTGRES_ENABLED}}
 - descriptor: pip-services:connection:postgres:con1:1.0
-  table: {{POSTGRES_TABLE}}{{#unless POSTGRES_TABLE}}myobjects{{/unless}}
   connection:
     uri: {{{POSTGRES_SERVICE_URI}}}
     host: {{{POSTGRES_SERVICE_HOST}}}{{#unless POSTGRES_SERVICE_HOST}}localhost{{/unless}}
@@ -208,6 +207,7 @@ Configuration for your microservice that includes postgresql persistence may loo
 - descriptor: myservice:persistence:postgres:default:1.0
   dependencies:
     connection: pip-services:connection:postgres:con1:1.0
+  table: {{POSTGRES_TABLE}}{{#unless POSTGRES_TABLE}}myobjects{{/unless}}
 {{/if}}
 ...
 ```
