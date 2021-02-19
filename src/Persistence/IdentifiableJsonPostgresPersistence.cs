@@ -26,7 +26,7 @@ namespace PipServices3.Postgres.Persistence
             var query = "CREATE TABLE IF NOT EXISTS " + QuoteIdentifier(_tableName)
             + " (\"id\" " + idType + " PRIMARY KEY, \"data\" " + dataType + ")";
 
-            AutoCreateObject(query);
+            EnsureSchema(query);
         }
 
         /// <summary>

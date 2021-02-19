@@ -111,7 +111,7 @@ namespace PipServices3.Postgres.Persistence
             "options.debug", true
         );
 
-        private readonly List<string> _autoObjects = new List<string>();
+        private readonly List<string> _schemaStatements = new List<string>();
 
 
         /// <summary>
@@ -242,16 +242,42 @@ namespace PipServices3.Postgres.Persistence
 
             builder.Append("(").Append(fields).Append(")");
 
-            AutoCreateObject(builder.ToString());
+            EnsureSchema(builder.ToString());
         }
 
         /// <summary>
-        /// Adds index definition to create it on opening
+        /// Adds a statement to schema definition.
         /// </summary>
-        /// <param name="dmlStatement">DML statement to autocreate database object</param>
-        protected void AutoCreateObject(string dmlStatement)
+        /// <param name="dmlStatement">a statement to be added to the schema</param>
+        [Obsolete("This is a deprecated method. Use ensureSchema instead.", false)]
+        protected void AutoCreateObject(string schemaStatement)
         {
-            _autoObjects.Add(dmlStatement);
+            EnsureSchema(schemaStatement);
+        }
+
+        /// <summary>
+        /// Adds a statement to schema definition
+        /// </summary>
+        /// <param name="schemaStatement">a statement to be added to the schema</param>
+        protected void EnsureSchema(string schemaStatement)
+        {
+            _schemaStatements.Add(schemaStatement);
+        }
+
+        /// <summary>
+        /// Clears all auto-created objects
+        /// </summary>
+        protected void ClearSchema()
+        {
+            _schemaStatements.Clear();
+        }
+
+        /// <summary>
+        /// Defines database schema via auto create objects or convenience methods.
+        /// </summary>
+        protected virtual void DefineSchema()
+        {
+            // Todo: override in chile classes
         }
 
         /// <summary>
@@ -320,8 +346,11 @@ namespace PipServices3.Postgres.Persistence
             _client = _connection.GetConnection();
             _databaseName = _connection.GetDatabaseName();
 
+            // Define database schema
+            DefineSchema();
+
             // Recreate objects
-            await AutoCreateObjectsAsync(correlationId);
+            await CreateSchemaAsync(correlationId);
 
             _opened = true;
         }
@@ -365,9 +394,9 @@ namespace PipServices3.Postgres.Persistence
             }
         }
 
-        protected async Task AutoCreateObjectsAsync(string correlationId)
+        protected async Task CreateSchemaAsync(string correlationId)
         {
-            if (_autoObjects == null || _autoObjects.Count == 0)
+            if (_schemaStatements == null || _schemaStatements.Count == 0)
                 return;
 
             // If table already exists then exit
@@ -379,7 +408,7 @@ namespace PipServices3.Postgres.Persistence
             // Run all DML commands
             try
             {
-                foreach (var dml in _autoObjects)
+                foreach (var dml in _schemaStatements)
                 {
                     await ExecuteNonQuery(dml);
                 }

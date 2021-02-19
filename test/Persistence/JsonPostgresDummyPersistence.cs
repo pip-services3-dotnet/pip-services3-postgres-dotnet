@@ -9,11 +9,16 @@ namespace PipServices3.Postgres.Persistence
         public JsonPostgresDummyPersistence()
             : base("dummies_json")
         {
-            EnsureTable("VARCHAR(32)", "JSONB");
-            EnsureIndex("dummies_json_key", new Dictionary<string, bool> { { "(data->>'key')", true } }, new IndexOptions { Unique = true });
         }
 
-		public async Task<DataPage<Dummy>> GetPageByFilterAsync(string correlationId, FilterParams filter, PagingParams paging)
+		protected override void DefineSchema()
+		{
+            ClearSchema();
+            EnsureTable("VARCHAR(32)", "JSONB");
+            EnsureIndex($"{_tableName}_json_key", new Dictionary<string, bool> { { "(data->>'key')", true } }, new IndexOptions { Unique = true });
+        }
+
+        public async Task<DataPage<Dummy>> GetPageByFilterAsync(string correlationId, FilterParams filter, PagingParams paging)
 		{
 			return await base.GetPageByFilterAsync(correlationId, ComposeFilter(filter), paging, null, null);
 		}
