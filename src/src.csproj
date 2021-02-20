@@ -6,7 +6,7 @@
     <RootNamespace>PipServices3.Postgres</RootNamespace>
     <ApplicationIcon />
     <Win32Resource />
-    <Version>3.0.3</Version>
+    <Version>3.1.0</Version>
     <Authors>Sergey Seroukhov, Denis Kuznetsov</Authors>
     <Copyright>Conceptual Vision Consulting LLC. 2017-2020</Copyright>
     <Description>PostgreSQL components for Pip.Services in .NET</Description>
