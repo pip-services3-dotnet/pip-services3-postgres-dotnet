@@ -6,7 +6,7 @@
     <RootNamespace>PipServices3.Postgres</RootNamespace>
     <ApplicationIcon />
     <Win32Resource />
-    <Version>3.1.0</Version>
+    <Version>3.2.0</Version>
     <Authors>Sergey Seroukhov, Denis Kuznetsov</Authors>
     <Copyright>Conceptual Vision Consulting LLC. 2017-2020</Copyright>
     <Description>PostgreSQL components for Pip.Services in .NET</Description>
@@ -31,7 +31,7 @@
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="4.1.5" />
     <PackageReference Include="PipServices3.Commons" Version="3.1.2" />
-    <PackageReference Include="PipServices3.Components" Version="3.1.1" />
+    <PackageReference Include="PipServices3.Components" Version="3.2.1" />
     <PackageReference Include="PipServices3.Data" Version="3.2.2" />
   </ItemGroup>
 </Project>
