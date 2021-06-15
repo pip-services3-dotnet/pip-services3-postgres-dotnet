@@ -26,8 +26,8 @@ namespace PipServices3.Postgres.Persistence
     /// 
     /// ### Configuration parameters ###
     /// 
-    /// - collection:                  (optional) PostgreSQL collection name
-    /// 
+    /// - table:                     (optional) PostgreSQL table name
+    /// - schema:                    (optional) PostgreSQL schema name
     /// connection(s):
     /// - discovery_key:             (optional) a key to retrieve the connection from <a href="https://pip-services3-dotnet.github.io/pip-services3-components-dotnet/interface_pip_services_1_1_components_1_1_connect_1_1_i_discovery.html">IDiscovery</a>
     /// - host:                      host name or IP address
@@ -97,7 +97,8 @@ namespace PipServices3.Postgres.Persistence
     public class PostgresPersistence<T> : IReferenceable, IUnreferenceable, IReconfigurable, IOpenable, ICleanable where T : new()
     {
         private static ConfigParams _defaultConfig = ConfigParams.FromTuples(
-            "collection", null,
+            "table", null,
+            "schema", null,
             "dependencies.connection", "*:connection:postgres:*:1.0",
 
             // connections.*
@@ -135,6 +136,11 @@ namespace PipServices3.Postgres.Persistence
         protected string _tableName;
 
         /// <summary>
+        /// The PostgreSQL schema object.
+        /// </summary>
+        protected string _schemaName;
+
+        /// <summary>
         /// Maximum page size
         /// </summary>
         protected int _maxPageSize = 100;
@@ -158,12 +164,11 @@ namespace PipServices3.Postgres.Persistence
         /// Creates a new instance of the persistence component.
         /// </summary>
         /// <param name="tableName">(optional) a tableName name.</param>
-        public PostgresPersistence(string tableName)
+        /// <param name="schemaName">(optional) a schema name.</param>
+        public PostgresPersistence(string tableName = null, string schemaName = null)
         {
-            if (string.IsNullOrWhiteSpace(tableName))
-                throw new ArgumentNullException(nameof(tableName));
-
             _tableName = tableName;
+            _schemaName = schemaName;
         }
 
         /// <summary>
@@ -177,6 +182,7 @@ namespace PipServices3.Postgres.Persistence
 
             _tableName = config.GetAsStringWithDefault("collection", _tableName);
             _tableName = config.GetAsStringWithDefault("table", _tableName);
+            _schemaName = config.GetAsStringWithDefault("schema", _schemaName);
             _maxPageSize = config.GetAsIntegerWithDefault("options.max_page_size", _maxPageSize);
         }
 
@@ -229,10 +235,14 @@ namespace PipServices3.Postgres.Persistence
             if (options.Unique)
                 builder.Append(" UNIQUE");
 
-            builder.Append(" INDEX IF NOT EXISTS ")
-                .Append(name)
-                .Append(" ON ")
-                .Append(QuoteIdentifier(_tableName));
+
+            var indexName = QuoteIdentifier(name);
+            if (_schemaName != null)
+            {
+                indexName = QuoteIdentifier(_schemaName) + "." + indexName;
+            }
+
+            builder.Append(" INDEX ").Append(indexName).Append(" ON ").Append(QuotedTableName());
 
             if (!string.IsNullOrWhiteSpace(options.Type))
                 builder.Append(" ")
@@ -243,16 +253,6 @@ namespace PipServices3.Postgres.Persistence
             builder.Append("(").Append(fields).Append(")");
 
             EnsureSchema(builder.ToString());
-        }
-
-        /// <summary>
-        /// Adds a statement to schema definition.
-        /// </summary>
-        /// <param name="dmlStatement">a statement to be added to the schema</param>
-        [Obsolete("This is a deprecated method. Use ensureSchema instead.", false)]
-        protected void AutoCreateObject(string schemaStatement)
-        {
-            EnsureSchema(schemaStatement);
         }
 
         /// <summary>
@@ -312,6 +312,23 @@ namespace PipServices3.Postgres.Persistence
             if (value[0] == '"' || value[0] == '(') return value;
 
             return '"' + value + '"';
+        }
+
+        protected string QuotedTableName()
+        {
+            if (_tableName == null)
+                return null;
+
+            var builder = new StringBuilder();
+            
+            if (_schemaName != null)
+            {
+                builder.Append(QuoteIdentifier(_schemaName)).Append('.');
+            }
+
+            builder.Append(QuoteIdentifier(_tableName));
+
+            return builder.ToString();
         }
 
         /// <summary>
@@ -385,7 +402,7 @@ namespace PipServices3.Postgres.Persistence
 
             try
             {
-                await ExecuteNonQuery("DELETE FROM " + _tableName);
+                await ExecuteNonQuery("DELETE FROM " + QuotedTableName());
             }
             catch (Exception ex)
             {
@@ -523,7 +540,7 @@ namespace PipServices3.Postgres.Persistence
                 PagingParams paging = null, string sort = null, string select = null)
         {
             select = string.IsNullOrWhiteSpace(select) ? "*" : select;
-            var query = string.Format("SELECT {0} FROM {1}", select, QuoteIdentifier(_tableName));
+            var query = string.Format("SELECT {0} FROM {1}", select, QuotedTableName());
 
             // Adjust max item count based on configuration
             paging = paging ?? new PagingParams();
@@ -564,7 +581,7 @@ namespace PipServices3.Postgres.Persistence
         /// <returns></returns>
         protected virtual async Task<long> GetCountByFilterAsync(string correlationId, string filter)
         {
-            var query = "SELECT COUNT(*) AS count FROM " + QuoteIdentifier(_tableName);
+            var query = "SELECT COUNT(*) AS count FROM " + QuotedTableName();
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
@@ -591,7 +608,7 @@ namespace PipServices3.Postgres.Persistence
             string sort = null, string select = null)
         {
             select = string.IsNullOrWhiteSpace(select) ? "*" : select;
-            var query = string.Format("SELECT {0} FROM {1}", select, QuoteIdentifier(_tableName));
+            var query = string.Format("SELECT {0} FROM {1}", select, QuotedTableName());
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
@@ -629,7 +646,7 @@ namespace PipServices3.Postgres.Persistence
 
             var pos = new Random().Next(0, Convert.ToInt32(count) - 1);
 
-            var query = "SELECT * FROM " + QuoteIdentifier(_tableName);
+            var query = "SELECT * FROM " + QuotedTableName();
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
@@ -665,7 +682,7 @@ namespace PipServices3.Postgres.Persistence
             var columns = GenerateColumns(map);
             var @params = GenerateParameters(map);
 
-            var query = "INSERT INTO " + QuoteIdentifier(_tableName) + " (" + columns + ") VALUES (" + @params + ") RETURNING *";
+            var query = "INSERT INTO " + QuotedTableName() + " (" + columns + ") VALUES (" + @params + ") RETURNING *";
 
             var result = await ExecuteReaderAsync(query, map);
 
@@ -687,7 +704,7 @@ namespace PipServices3.Postgres.Persistence
         /// <param name="filterDefinition">(optional) a filter JSON object.</param>
         public virtual async Task DeleteByFilterAsync(string correlationId, string filter)
         {
-            var query = "DELETE FROM " + QuoteIdentifier(_tableName);
+            var query = "DELETE FROM " + QuotedTableName();
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;

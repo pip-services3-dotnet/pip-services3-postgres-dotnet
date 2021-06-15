@@ -22,8 +22,15 @@ namespace PipServices3.Postgres.Persistence
         /// <param name="idType">type of the id column (default: TEXT)</param>
         /// <param name="dataType">type of the data column (default: JSONB)</param>
         protected void EnsureTable(string idType = "TEXT", string dataType = "JSONB")
-        { 
-            var query = "CREATE TABLE IF NOT EXISTS " + QuoteIdentifier(_tableName)
+        {
+            string query;
+            if (_schemaName != null)
+            {
+                query = "CREATE SCHEMA IF NOT EXISTS " + QuoteIdentifier(_schemaName);
+                EnsureSchema(query);
+            }
+            
+            query = "CREATE TABLE IF NOT EXISTS " + QuotedTableName()
             + " (\"id\" " + idType + " PRIMARY KEY, \"data\" " + dataType + ")";
 
             EnsureSchema(query);
