@@ -720,7 +720,7 @@ namespace PipServices3.Postgres.Persistence
             return result;
         }
 
-        protected virtual void SetParameters(NpgsqlCommand cmd, IEnumerable<object> values)
+        protected virtual void SetParameters<T_VALUE>(NpgsqlCommand cmd, IEnumerable<T_VALUE> values)
         {
             if (values != null && values.Count() > 0)
             {
@@ -744,12 +744,20 @@ namespace PipServices3.Postgres.Persistence
             cmd.Parameters.AddWithValue(name, value);
         }
 
+        protected async Task<int> ExecuteNonQuery(string cmdText)
+        {
+            using (var cmd = new NpgsqlCommand(cmdText, _client))
+            {
+                return await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
         protected async Task<int> ExecuteNonQuery(string cmdText, AnyValueMap map)
         {
             return await ExecuteNonQuery(cmdText, map.Values);
         }
-        
-        protected async Task<int> ExecuteNonQuery(string cmdText, IEnumerable<object> values = null)
+
+        protected async Task<int> ExecuteNonQuery<T_VALUE>(string cmdText, IEnumerable<T_VALUE> values = null)
         {
             using (var cmd = new NpgsqlCommand(cmdText, _client))
             {
@@ -758,12 +766,21 @@ namespace PipServices3.Postgres.Persistence
             }
         }
 
+        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string cmdText)
+        {
+            using (var cmd = new NpgsqlCommand(cmdText, _client))
+            {
+                await cmd.PrepareAsync();
+                return await ExecuteReaderAsync(cmd);
+            }
+        }
+
         protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string cmdText, AnyValueMap map)
         {
             return await ExecuteReaderAsync(cmdText, map.Values);
         }
 
-        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string cmdText, IEnumerable<object> values = null)
+        protected async Task<List<AnyValueMap>> ExecuteReaderAsync<T_VALUE>(string cmdText, IEnumerable<T_VALUE> values = null)
         {
             using (var cmd = new NpgsqlCommand(cmdText, _client))
             {

@@ -10,7 +10,6 @@ namespace PipServices3.Postgres.Persistence
 {
     public class IdentifiableJsonPostgresPersistence<T, K>: IdentifiablePostgresPersistence<T, K>
         where T : IIdentifiable<K>, new()
-        where K : class
     {
         public IdentifiableJsonPostgresPersistence(string tableName)
             : base(tableName)

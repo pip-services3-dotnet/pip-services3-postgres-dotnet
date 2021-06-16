@@ -96,7 +96,6 @@ namespace PipServices3.Postgres.Persistence
     /// </example>
     public class IdentifiablePostgresPersistence<T, K> : PostgresPersistence<T>, IWriter<T, K>, IGetter<T, K>, ISetter<T>, IPartialUpdater<T, K>
         where T : IIdentifiable<K>, new()
-        where K : class
     {
         /// <summary>
         /// Flag to turn on auto generation of object ids.
