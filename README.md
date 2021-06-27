@@ -99,7 +99,7 @@ class MyPostgresPersistence: IdentifiablePostgresPersistence<MyObject, string>
         return criteria.Count > 0 ? string.Join(" AND ", criteria) : null;
     }
 
-    public Task<DataPage<MyObject>> GetPageByFilter(string correlationId, FilterParams filter, PagingParams paging)
+    public async Task<DataPage<MyObject>> GetPageByFilter(string correlationId, FilterParams filter, PagingParams paging)
     {
         return await base.GetPageByFilterAsync(correlationId, this.ComposeFilter(filter), paging, select: "id");
     }
@@ -167,9 +167,9 @@ class MyPostgresPersistence : IdentifiableJsonPostgresPersistence<MyObject, stri
 
     }
 
-    public DataPage<MyObject> GetPageByFilter(string correlationId, FilterParams filter, PagingParams paging)
+    public async DataPage<MyObject> GetPageByFilter(string correlationId, FilterParams filter, PagingParams paging)
     {
-        return base.GetPageByFilterAsync(correlationId, this.ComposeFilter(filter), paging, "id").Result;
+        return await base.GetPageByFilterAsync(correlationId, this.ComposeFilter(filter), paging, "id").Result;
     }
 
     public async Task<MyObject> GetOneByKey(string correlationId, string key)
