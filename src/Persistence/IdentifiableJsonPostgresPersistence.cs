@@ -11,8 +11,8 @@ namespace PipServices3.Postgres.Persistence
     public class IdentifiableJsonPostgresPersistence<T, K>: IdentifiablePostgresPersistence<T, K>
         where T : IIdentifiable<K>, new()
     {
-        public IdentifiableJsonPostgresPersistence(string tableName)
-            : base(tableName)
+        public IdentifiableJsonPostgresPersistence(string tableName, string schemaName = null)
+            : base(tableName, schemaName)
         { }
 
         /// <summary>
