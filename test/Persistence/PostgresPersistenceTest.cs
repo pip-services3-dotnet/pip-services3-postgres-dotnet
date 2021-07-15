@@ -69,5 +69,17 @@ namespace PipServices3.Postgres.Persistence
             await fixture.TestBatchOperationsAsync();
         }
 
+        [Fact]
+        public async Task TestMultiThreadOperations()
+        {
+            var options = new ParallelOptions { MaxDegreeOfParallelism = 8 };
+
+            Parallel.For(0, 10, (i) =>
+            {
+                fixture.TestMultiThreadOperationsAsync(i).Wait();
+            });
+
+            await Task.Delay(0);
+        }
     }
 }

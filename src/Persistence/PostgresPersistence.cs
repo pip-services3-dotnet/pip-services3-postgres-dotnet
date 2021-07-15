@@ -121,11 +121,6 @@ namespace PipServices3.Postgres.Persistence
         protected PostgresConnection _connection;
 
         /// <summary>
-        /// The PostgreSQL connection component.
-        /// </summary>
-        protected NpgsqlConnection _client;
-
-        /// <summary>
         /// The PostgreSQL database name.
         /// </summary>
         protected string _databaseName;
@@ -360,7 +355,6 @@ namespace PipServices3.Postgres.Persistence
             if (_connection.IsOpen() == false)
                 throw new InvalidStateException(correlationId, "CONNECTION_NOT_OPENED", "Database connection is not opened");
 
-            _client = _connection.GetConnection();
             _databaseName = _connection.GetDatabaseName();
 
             // Define database schema
@@ -402,7 +396,7 @@ namespace PipServices3.Postgres.Persistence
 
             try
             {
-                await ExecuteNonQuery("DELETE FROM " + QuotedTableName());
+                await ExecuteNonQuery(correlationId, "DELETE FROM " + QuotedTableName());
             }
             catch (Exception ex)
             {
@@ -417,7 +411,7 @@ namespace PipServices3.Postgres.Persistence
                 return;
 
             // If table already exists then exit
-            if (await TableExistAsync(_tableName))
+            if (await TableExistAsync(correlationId, _tableName))
                 return;
 
             _logger.Debug(correlationId, "Table {0} does not exist. Creating database objects...", _tableName);
@@ -427,7 +421,7 @@ namespace PipServices3.Postgres.Persistence
             {
                 foreach (var dml in _schemaStatements)
                 {
-                    await ExecuteNonQuery(dml);
+                    await ExecuteNonQuery(correlationId, dml);
                 }
             }
             catch (Exception ex)
@@ -557,7 +551,7 @@ namespace PipServices3.Postgres.Persistence
             if (skip >= 0) query += " OFFSET " + skip;
             query += " LIMIT " + take;
 
-            var result = await ExecuteReaderAsync(query);
+            var result = await ExecuteReaderAsync(correlationId, query);
 
             var items = result.Select(map => ConvertToPublic(map)).ToList();
 
@@ -586,7 +580,7 @@ namespace PipServices3.Postgres.Persistence
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
 
-            var count = await ExecuteScalarAsync<long>(query);
+            var count = await ExecuteScalarAsync<long>(correlationId, query);
 
             _logger.Trace(correlationId, "Counted {0} items in {1}", count, _tableName);
 
@@ -616,7 +610,7 @@ namespace PipServices3.Postgres.Persistence
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " ORDER BY " + sort;
 
-            var result = await ExecuteReaderAsync(query);
+            var result = await ExecuteReaderAsync(correlationId, query);
 
             var items = result.Select(map => ConvertToPublic(map)).ToList();
 
@@ -653,7 +647,7 @@ namespace PipServices3.Postgres.Persistence
 
             query += string.Format(" OFFSET {0} LIMIT 1", pos);
 
-            var items = await ExecuteReaderAsync(query);
+            var items = await ExecuteReaderAsync(correlationId, query);
 
             var item = items.FirstOrDefault();
 
@@ -684,7 +678,7 @@ namespace PipServices3.Postgres.Persistence
 
             var query = "INSERT INTO " + QuotedTableName() + " (" + columns + ") VALUES (" + @params + ") RETURNING *";
 
-            var result = await ExecuteReaderAsync(query, map);
+            var result = await ExecuteReaderAsync(correlationId, query, map);
 
             var newItem = result != null && result.Count == 1
                 ? ConvertToPublic(result[0]) : default;
@@ -709,14 +703,14 @@ namespace PipServices3.Postgres.Persistence
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
 
-            var deletedCount = await ExecuteNonQuery(query);
+            var deletedCount = await ExecuteNonQuery(correlationId, query);
 
             _logger.Trace(correlationId, $"Deleted {deletedCount} from {_tableName}");
         }
 
-        private async Task<bool> TableExistAsync(string tableName)
+        private async Task<bool> TableExistAsync(string correlationId, string tableName)
         {
-            var result = await ExecuteScalarAsync<bool>("SELECT to_regclass('" + tableName + "') IS NOT NULL");
+            var result = await ExecuteScalarAsync<bool>(correlationId, "SELECT to_regclass('" + tableName + "') IS NOT NULL");
             return result;
         }
 
@@ -744,45 +738,49 @@ namespace PipServices3.Postgres.Persistence
             cmd.Parameters.AddWithValue(name, value);
         }
 
-        protected async Task<int> ExecuteNonQuery(string cmdText)
+        protected async Task<int> ExecuteNonQuery(string correlationId, string cmdText)
         {
-            using (var cmd = new NpgsqlCommand(cmdText, _client))
+            using (var conn = await _connection.GetConnection(correlationId))
+            using (var cmd = new NpgsqlCommand(cmdText, conn))
             {
                 return await cmd.ExecuteNonQueryAsync();
             }
         }
 
-        protected async Task<int> ExecuteNonQuery(string cmdText, AnyValueMap map)
+        protected async Task<int> ExecuteNonQuery(string correlationId, string cmdText, AnyValueMap map)
         {
-            return await ExecuteNonQuery(cmdText, map.Values);
+            return await ExecuteNonQuery(correlationId, cmdText, map.Values);
         }
 
-        protected async Task<int> ExecuteNonQuery<T_VALUE>(string cmdText, IEnumerable<T_VALUE> values = null)
+        protected async Task<int> ExecuteNonQuery<T_VALUE>(string correlationId, string cmdText, IEnumerable<T_VALUE> values = null)
         {
-            using (var cmd = new NpgsqlCommand(cmdText, _client))
+            using (var conn = await _connection.GetConnection(correlationId))
+            using (var cmd = new NpgsqlCommand(cmdText, conn))
             {
                 SetParameters(cmd, values);
                 return await cmd.ExecuteNonQueryAsync();
             }
         }
 
-        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string cmdText)
+        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string correlationId, string cmdText)
         {
-            using (var cmd = new NpgsqlCommand(cmdText, _client))
+            using (var conn = await _connection.GetConnection(correlationId))
+            using (var cmd = new NpgsqlCommand(cmdText, conn))
             {
                 await cmd.PrepareAsync();
                 return await ExecuteReaderAsync(cmd);
             }
         }
 
-        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string cmdText, AnyValueMap map)
+        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string correlationId, string cmdText, AnyValueMap map)
         {
-            return await ExecuteReaderAsync(cmdText, map.Values);
+            return await ExecuteReaderAsync(correlationId, cmdText, map.Values);
         }
 
-        protected async Task<List<AnyValueMap>> ExecuteReaderAsync<T_VALUE>(string cmdText, IEnumerable<T_VALUE> values = null)
+        protected async Task<List<AnyValueMap>> ExecuteReaderAsync<T_VALUE>(string correlationId, string cmdText, IEnumerable<T_VALUE> values = null)
         {
-            using (var cmd = new NpgsqlCommand(cmdText, _client))
+            using (var conn = await _connection.GetConnection(correlationId))
+            using (var cmd = new NpgsqlCommand(cmdText, conn))
             {
                 SetParameters(cmd, values);
                 await cmd.PrepareAsync();
@@ -839,9 +837,10 @@ namespace PipServices3.Postgres.Persistence
             }
         }
 
-        private async Task<R> ExecuteScalarAsync<R>(string cmdText)
+        private async Task<R> ExecuteScalarAsync<R>(string correlationId, string cmdText)
         {
-            using (var cmd = new NpgsqlCommand(cmdText, _client))
+            using (var conn = await _connection.GetConnection(correlationId))
+            using (var cmd = new NpgsqlCommand(cmdText, conn))
             {
                 var result = await cmd.ExecuteScalarAsync();
                 return (R)Convert.ChangeType(result, typeof(R));

@@ -154,5 +154,75 @@ namespace PipServices3.Postgres.Fixtures
             Assert.Empty(items);
         }
 
+        public async Task TestMultiThreadOperationsAsync(int i)
+        {
+            var dummy = new Dummy
+            {
+                Id = null,
+                Key = $"Key {i}",
+                Content = "Content 1",
+                CreateTimeUtc = DateTime.UtcNow,
+                SubDummy = new SubDummy { Type = "some type", ArrayOfDouble = new double[] { 10, 10 } }
+            };
+
+            // Create one dummy
+            var dummy1 = await _persistence.CreateAsync(null, dummy);
+
+            Assert.NotNull(dummy1);
+            Assert.NotNull(dummy1.SubDummy);
+            Assert.Equal(dummy.Key, dummy1.Key);
+            Assert.Equal(dummy.Content, dummy1.Content);
+            Assert.Equal(dummy.CreateTimeUtc, dummy1.CreateTimeUtc, TimeSpan.FromMilliseconds(1000));
+            Assert.Equal(dummy.SubDummy.Type, dummy1.SubDummy.Type);
+            Assert.Equal(dummy.SubDummy.ArrayOfDouble, dummy1.SubDummy.ArrayOfDouble);
+
+            // Update the dummy
+            dummy1.Content = "Updated Content 1";
+            var result = await _persistence.UpdateAsync(null, dummy1);
+            Assert.NotNull(result);
+            Assert.NotNull(result.SubDummy);
+            Assert.Equal(dummy1.Id, result.Id);
+            Assert.Equal(dummy1.Key, result.Key);
+            Assert.Equal(dummy1.Content, result.Content);
+            Assert.Equal(dummy1.CreateTimeUtc, result.CreateTimeUtc, TimeSpan.FromMilliseconds(1000));
+            Assert.Equal(dummy1.SubDummy.Type, result.SubDummy.Type);
+            Assert.Equal(dummy1.SubDummy.ArrayOfDouble, result.SubDummy.ArrayOfDouble);
+
+            // Set the dummy
+            dummy1.Content = "Updated Content 2";
+            result = await _persistence.SetAsync(null, dummy1);
+            Assert.NotNull(result);
+            Assert.NotNull(result.SubDummy);
+            Assert.Equal(dummy1.Id, result.Id);
+            Assert.Equal(dummy1.Key, result.Key);
+            Assert.Equal(dummy1.Content, result.Content);
+            Assert.Equal(dummy1.CreateTimeUtc, result.CreateTimeUtc, TimeSpan.FromMilliseconds(1000));
+            Assert.Equal(dummy1.SubDummy.Type, result.SubDummy.Type);
+            Assert.Equal(dummy1.SubDummy.ArrayOfDouble, result.SubDummy.ArrayOfDouble);
+
+            // Partially update the dummy
+            result = await _persistence.UpdatePartially(null, dummy1.Id,
+                AnyValueMap.FromTuples("content", "Partially Updated Content 1"));
+            Assert.NotNull(result);
+            Assert.Equal(dummy1.Id, result.Id);
+            Assert.Equal(dummy1.Key, result.Key);
+            Assert.Equal("Partially Updated Content 1", result.Content);
+
+            // Get the dummy by Id
+            result = await _persistence.GetOneByIdAsync(null, dummy1.Id);
+            Assert.NotNull(result);
+            Assert.Equal(dummy1.Id, result.Id);
+            Assert.Equal(dummy1.Key, result.Key);
+
+            // Delete the dummy
+            result = await _persistence.DeleteByIdAsync(null, dummy1.Id);
+            Assert.NotNull(result);
+            Assert.Equal(dummy1.Id, result.Id);
+            Assert.Equal(dummy1.Key, result.Key);
+
+            // Get the deleted dummy
+            result = await _persistence.GetOneByIdAsync(null, dummy1.Id);
+            Assert.Null(result);
+        }
     }
 }

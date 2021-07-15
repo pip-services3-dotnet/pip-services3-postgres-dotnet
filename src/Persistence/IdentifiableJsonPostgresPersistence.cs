@@ -77,7 +77,7 @@ namespace PipServices3.Postgres.Persistence
 
             var query = "UPDATE " + _tableName + " SET \"data\"=\"data\"||@Param2 WHERE \"id\"=@Param1 RETURNING *";
 
-            var result = (await ExecuteReaderAsync(query, values)).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(correlationId, query, values)).FirstOrDefault();
 
             _logger.Trace(correlationId, "Updated partially in {0} with id = {1}", _tableName, id);
 
