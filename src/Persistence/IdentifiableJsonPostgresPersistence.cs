@@ -10,10 +10,9 @@ namespace PipServices3.Postgres.Persistence
 {
     public class IdentifiableJsonPostgresPersistence<T, K>: IdentifiablePostgresPersistence<T, K>
         where T : IIdentifiable<K>, new()
-        where K : class
     {
-        public IdentifiableJsonPostgresPersistence(string tableName)
-            : base(tableName)
+        public IdentifiableJsonPostgresPersistence(string tableName, string schemaName = null)
+            : base(tableName, schemaName)
         { }
 
         /// <summary>
@@ -22,11 +21,18 @@ namespace PipServices3.Postgres.Persistence
         /// <param name="idType">type of the id column (default: TEXT)</param>
         /// <param name="dataType">type of the data column (default: JSONB)</param>
         protected void EnsureTable(string idType = "TEXT", string dataType = "JSONB")
-        { 
-            var query = "CREATE TABLE IF NOT EXISTS " + QuoteIdentifier(_tableName)
+        {
+            string query;
+            if (_schemaName != null)
+            {
+                query = "CREATE SCHEMA IF NOT EXISTS " + QuoteIdentifier(_schemaName);
+                EnsureSchema(query);
+            }
+            
+            query = "CREATE TABLE IF NOT EXISTS " + QuotedTableName()
             + " (\"id\" " + idType + " PRIMARY KEY, \"data\" " + dataType + ")";
 
-            AutoCreateObject(query);
+            EnsureSchema(query);
         }
 
         /// <summary>
@@ -71,7 +77,7 @@ namespace PipServices3.Postgres.Persistence
 
             var query = "UPDATE " + _tableName + " SET \"data\"=\"data\"||@Param2 WHERE \"id\"=@Param1 RETURNING *";
 
-            var result = (await ExecuteReaderAsync(query, values)).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(correlationId, query, values)).FirstOrDefault();
 
             _logger.Trace(correlationId, "Updated partially in {0} with id = {1}", _tableName, id);
 

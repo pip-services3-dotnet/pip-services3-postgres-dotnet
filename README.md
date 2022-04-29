@@ -99,12 +99,12 @@ class MyPostgresPersistence: IdentifiablePostgresPersistence<MyObject, string>
         return criteria.Count > 0 ? string.Join(" AND ", criteria) : null;
     }
 
-    void GetPageByFilter(string correlationId, FilterParams filter, PagingParams paging)
+    public async Task<DataPage<MyObject>> GetPageByFilter(string correlationId, FilterParams filter, PagingParams paging)
     {
-        base.GetPageByFilterAsync(correlationId, this.ComposeFilter(filter), paging, select: "id");
+        return await base.GetPageByFilterAsync(correlationId, this.ComposeFilter(filter), paging, select: "id");
     }
 
-    async void GetOneByKey(string correlationId, string key)
+    public async Task<MyObject> GetOneByKey(string correlationId, string key)
     {
         string query = "SELECT * FROM " + this.QuoteIdentifier(this._tableName) + " WHERE \"key\"=$1";
         List<string> param = new List<string> { key };
@@ -118,6 +118,8 @@ class MyPostgresPersistence: IdentifiablePostgresPersistence<MyObject, string>
             this._logger.Trace(correlationId, "Retrieved from %s with key = %s", this._tableName, key);
 
         item = this.ConvertToPublic(item);
+
+        return item;
     }
 }
 ```
@@ -165,12 +167,12 @@ class MyPostgresPersistence : IdentifiableJsonPostgresPersistence<MyObject, stri
 
     }
 
-    DataPage<MyObject> GetPageByFilter(string correlationId, FilterParams filter, PagingParams paging)
+    public async DataPage<MyObject> GetPageByFilter(string correlationId, FilterParams filter, PagingParams paging)
     {
-        return base.GetPageByFilterAsync(correlationId, this.ComposeFilter(filter), paging, "id").Result;
+        return await base.GetPageByFilterAsync(correlationId, this.ComposeFilter(filter), paging, "id").Result;
     }
 
-    async void GetOneByKey(string correlationId, string key)
+    public async Task<MyObject> GetOneByKey(string correlationId, string key)
     {
         string query = "SELECT * FROM " + this.QuoteIdentifier(this._tableName) + " WHERE data->>'key'=$1";
         List<string> param = new List<string> { key };
@@ -185,6 +187,8 @@ class MyPostgresPersistence : IdentifiableJsonPostgresPersistence<MyObject, stri
             this._logger.Trace(correlationId, "Retrieved from %s with key = %s", this._tableName, key);
 
         item = this.ConvertToPublic(item);
+
+        return item;
     }
 }
 ```

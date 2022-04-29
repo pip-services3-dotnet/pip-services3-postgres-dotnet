@@ -4,21 +4,22 @@ using System.Threading.Tasks;
 
 namespace PipServices3.Postgres.Persistence
 {
-    public class JsonPostgresDummyPersistence: IdentifiableJsonPostgresPersistence<Dummy, string>, IDummyPersistence
+    public class JsonPostgresDummyPersistence2: IdentifiableJsonPostgresPersistence<Dummy2, long>, IDummyPersistence2
     {
-        public JsonPostgresDummyPersistence()
-            : base("dummies_json")
+        public JsonPostgresDummyPersistence2()
+            : base("dummies_json2")
         {
+            _autoGenerateId = false;
         }
 
 		protected override void DefineSchema()
 		{
             ClearSchema();
-            EnsureTable("VARCHAR(32)", "JSONB");
+            EnsureTable("NUMERIC", "JSONB");
             EnsureIndex($"{_tableName}_key", new Dictionary<string, bool> { { "(data->>'key')", true } }, new IndexOptions { Unique = true });
         }
 
-        public async Task<DataPage<Dummy>> GetPageByFilterAsync(string correlationId, FilterParams filter, PagingParams paging)
+        public async Task<DataPage<Dummy2>> GetPageByFilterAsync(string correlationId, FilterParams filter, PagingParams paging)
 		{
 			return await base.GetPageByFilterAsync(correlationId, ComposeFilter(filter), paging, null, null);
 		}

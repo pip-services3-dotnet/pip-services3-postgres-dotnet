@@ -252,3 +252,6 @@ paket-files/
 .idea/
 *.sln.iml
 /docker/docker-compose.yml
+
+# VSCode directory
+.vscode/

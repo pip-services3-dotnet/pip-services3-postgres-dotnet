@@ -7,13 +7,13 @@ using Xunit;
 namespace PipServices3.Postgres.Persistence
 {
     /// <summary>
-    /// Unit tests for the <c>PostgresPersistenceTest</c> class
+    /// Unit tests for the <c>PostgresPersistenceTest2</c> class
     /// </summary>
     [Collection("Sequential")]
-    public class PostgresPersistenceTest: IDisposable
+    public class PostgresPersistenceTest2: IDisposable
     {
-        private PostgresDummyPersistence persistence;
-        private DummyPersistenceFixture fixture;
+        private PostgresDummyPersistence2 persistence;
+        private DummyPersistenceFixture2 fixture;
 
         private string postgresUri;
         private string postgresHost;
@@ -22,7 +22,7 @@ namespace PipServices3.Postgres.Persistence
         private string postgresUsername;
         private string postgresPassword;
 
-        public PostgresPersistenceTest()
+        public PostgresPersistenceTest2()
         {
             postgresUri = Environment.GetEnvironmentVariable("POSTGRES_URI");
             postgresHost = Environment.GetEnvironmentVariable("POSTGRES_HOST") ?? "localhost";
@@ -43,10 +43,10 @@ namespace PipServices3.Postgres.Persistence
                 "credential.password", postgresPassword
             );
 
-            persistence = new PostgresDummyPersistence();
+            persistence = new PostgresDummyPersistence2();
             persistence.Configure(dbConfig);
 
-            fixture = new DummyPersistenceFixture(persistence);
+            fixture = new DummyPersistenceFixture2(persistence);
 
             persistence.OpenAsync(null).Wait();
             persistence.ClearAsync(null).Wait();
@@ -69,17 +69,5 @@ namespace PipServices3.Postgres.Persistence
             await fixture.TestBatchOperationsAsync();
         }
 
-        [Fact]
-        public async Task TestMultiThreadOperations()
-        {
-            var options = new ParallelOptions { MaxDegreeOfParallelism = 8 };
-
-            Parallel.For(0, 10, (i) =>
-            {
-                fixture.TestMultiThreadOperationsAsync(i).Wait();
-            });
-
-            await Task.Delay(0);
-        }
     }
 }

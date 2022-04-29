@@ -21,7 +21,8 @@ namespace PipServices3.Postgres.Persistence
     /// 
     /// ### Configuration parameters ###
     /// 
-    /// - collection:                  (optional) PostgreSQL collection name
+    /// - table:                     (optional) PostgreSQL table name
+    /// - schema:                    (optional) PostgreSQL schema name
     /// 
     /// connection(s):
     /// - discovery_key:             (optional) a key to retrieve the connection from <a href="https://pip-services3-dotnet.github.io/pip-services3-components-dotnet/interface_pip_services_1_1_components_1_1_connect_1_1_i_discovery.html">IDiscovery</a>
@@ -95,14 +96,19 @@ namespace PipServices3.Postgres.Persistence
     /// </example>
     public class IdentifiablePostgresPersistence<T, K> : PostgresPersistence<T>, IWriter<T, K>, IGetter<T, K>, ISetter<T>, IPartialUpdater<T, K>
         where T : IIdentifiable<K>, new()
-        where K : class
     {
+        /// <summary>
+        /// Flag to turn on auto generation of object ids.
+        /// </summary>
+        protected bool _autoGenerateId = true;
+
         /// <summary>
         /// Creates a new instance of the persistence component.
         /// </summary>
-        /// <param name="tableName">(optional) a collection name.</param>
-        public IdentifiablePostgresPersistence(string tableName)
-            : base(tableName)
+        /// <param name="tableName">(optional) a table name.</param>
+        /// <param name="schemaName">(optional) a schema name.</param>
+        public IdentifiablePostgresPersistence(string tableName = null, string schemaName = null)
+            : base(tableName, schemaName)
         { }
 
         /// <summary>
@@ -114,9 +120,9 @@ namespace PipServices3.Postgres.Persistence
         public virtual async Task<List<T>> GetListByIdsAsync(string correlationId, K[] ids)
         {
             var @params = GenerateParameters(ids);
-            var query = "SELECT * FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" IN (" + @params + ")";
+            var query = "SELECT * FROM " + QuotedTableName() + " WHERE \"id\" IN (" + @params + ")";
 
-            var items = await ExecuteReaderAsync(query, ids);
+            var items = await ExecuteReaderAsync(correlationId, query, ids);
 
             _logger.Trace(correlationId, $"Retrieved {items.Count} from {_tableName}");
 
@@ -132,9 +138,9 @@ namespace PipServices3.Postgres.Persistence
         public virtual async Task<T> GetOneByIdAsync(string correlationId, K id)
         {
             var @params = new[] { id };
-            var query = "SELECT * FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" = @Param1";
+            var query = "SELECT * FROM " + QuotedTableName() + " WHERE \"id\" = @Param1";
 
-            var result = (await ExecuteReaderAsync(query, @params)).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(correlationId, query, @params)).FirstOrDefault();
 
             if (result == null)
             {
@@ -157,8 +163,9 @@ namespace PipServices3.Postgres.Persistence
         /// <returns>created item.</returns>
         public override async Task<T> CreateAsync(string correlationId, T item)
         {
-            if (item is IStringIdentifiable && item.Id == null)
-                ObjectWriter.SetProperty(item, nameof(item.Id), IdGenerator.NextLong());
+            // Assign unique id
+            if (item is IStringIdentifiable stringIdentifiable && stringIdentifiable.Id == null && _autoGenerateId)
+                stringIdentifiable.Id = IdGenerator.NextLong();
 
             return await base.CreateAsync(correlationId, item);
         }
@@ -174,17 +181,21 @@ namespace PipServices3.Postgres.Persistence
             if (item == null || item.Id == null)
                 return default;
 
+            // Assign unique id
+            if (item is IStringIdentifiable stringIdentifiable && stringIdentifiable.Id == null && _autoGenerateId)
+                stringIdentifiable.Id = IdGenerator.NextLong();
+
             var map = ConvertFromPublic(item);
             var columns = GenerateColumns(map);
             var @params = GenerateParameters(map);
             var setParams = GenerateSetParameters(map);
             var values = GenerateValues(map);
 
-            var query = "INSERT INTO " + QuoteIdentifier(_tableName) + " (" + columns + ")"
+            var query = "INSERT INTO " + QuotedTableName() + " (" + columns + ")"
                 + " VALUES (" + @params +")"
                 + " ON CONFLICT (\"id\") DO UPDATE SET " + setParams + " RETURNING *";
 
-            var result = (await ExecuteReaderAsync(query, map)).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(correlationId, query, map)).FirstOrDefault();
 
             _logger.Trace(correlationId, "Set in {0} with id = {1}", _tableName, item.Id);
 
@@ -208,10 +219,10 @@ namespace PipServices3.Postgres.Persistence
             var values = GenerateValues(map);
             values.Add(item.Id);
 
-            var query = "UPDATE " + QuoteIdentifier(_tableName)
+            var query = "UPDATE " + QuotedTableName()
                 + " SET " + @params +" WHERE \"id\"=@Param" + values.Count + " RETURNING *";
 
-            var result = (await ExecuteReaderAsync(query, values)).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(correlationId, query, values)).FirstOrDefault();
 
             _logger.Trace(correlationId, "Update in {0} with id = {1}", _tableName, item.Id);
             
@@ -236,10 +247,10 @@ namespace PipServices3.Postgres.Persistence
             var values = GenerateValues(map);
             values.Add(id);
 
-            var query = "UPDATE " + QuoteIdentifier(_tableName)
+            var query = "UPDATE " + QuotedTableName()
                 + " SET " + @params + " WHERE \"id\" = @Param" + values.Count + " RETURNING *";
 
-            var result = (await ExecuteReaderAsync(query, values)).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(correlationId, query, values)).FirstOrDefault();
 
             _logger.Trace(correlationId, "Updated partially in {0} with id = {1}", _tableName, id);
 
@@ -257,9 +268,9 @@ namespace PipServices3.Postgres.Persistence
         {
             var values = new[] { id };
 
-            var query = "DELETE FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" = @Param1 RETURNING *";
+            var query = "DELETE FROM " + QuotedTableName() + " WHERE \"id\" = @Param1 RETURNING *";
 
-            var result = (await ExecuteReaderAsync(query, values)).FirstOrDefault();
+            var result = (await ExecuteReaderAsync(correlationId, query, values)).FirstOrDefault();
 
             _logger.Trace(correlationId, "Deleted from {0} with id = {1}", _tableName, id);
 
@@ -275,9 +286,9 @@ namespace PipServices3.Postgres.Persistence
         public virtual async Task DeleteByIdsAsync(string correlationId, K[] ids)
         {
             var @params = GenerateParameters(ids);
-            var query = "DELETE FROM " + QuoteIdentifier(_tableName) + " WHERE \"id\" IN (" + @params +")";
+            var query = "DELETE FROM " + QuotedTableName() + " WHERE \"id\" IN (" + @params +")";
 
-            var result = await ExecuteNonQuery(query, ids);
+            var result = await ExecuteNonQuery(correlationId, query, ids);
 
             _logger.Trace(correlationId, $"Deleted {result} from {_tableName}");
         }

@@ -4,17 +4,18 @@ using PipServices3.Commons.Data;
 
 namespace PipServices3.Postgres.Persistence
 {
-	public class PostgresDummyPersistence : IdentifiablePostgresPersistence<Dummy, string>, IDummyPersistence
+	public class PostgresDummyPersistence2 : IdentifiablePostgresPersistence<Dummy2, long>, IDummyPersistence2
     {
-        public PostgresDummyPersistence()
-            : base("dummies")
+        public PostgresDummyPersistence2()
+            : base("dummies2")
         {
+            _autoGenerateId = false;
         }
 
 		protected override void DefineSchema()
 		{
             ClearSchema();
-            EnsureSchema($"CREATE TABLE {_tableName} (id TEXT PRIMARY KEY, key TEXT, content TEXT, create_time_utc TIMESTAMP with time zone, sub_dummy JSONB)");
+            EnsureSchema($"CREATE TABLE {_tableName} (id NUMERIC PRIMARY KEY, key TEXT, content TEXT, create_time_utc TIMESTAMP with time zone, sub_dummy JSONB)");
             EnsureIndex($"{_tableName}_key", new Dictionary<string, bool> { { "key", true } }, new IndexOptions { Unique = true });
         }
 
@@ -43,7 +44,7 @@ namespace PipServices3.Postgres.Persistence
 		//          return subDummy;
 		//      }
 
-		public async Task<DataPage<Dummy>> GetPageByFilterAsync(string correlationId, FilterParams filter, PagingParams paging)
+		public async Task<DataPage<Dummy2>> GetPageByFilterAsync(string correlationId, FilterParams filter, PagingParams paging)
         {
             filter ??= new FilterParams();
             var key = filter.GetAsNullableString("key");

@@ -52,6 +52,8 @@ namespace PipServices3.Postgres.Persistence
             "options.max_pool_size", 3
         );
 
+        protected string _connectionString;
+
         /// <summary>
         /// The connection resolver.
         /// </summary>
@@ -61,11 +63,6 @@ namespace PipServices3.Postgres.Persistence
         /// The configuration options.
         /// </summary>
         protected ConfigParams _options = new ConfigParams();
-
-        /// <summary>
-        /// The PostgreSQL connection object.
-        /// </summary>
-        protected NpgsqlConnection _connection;
 
         /// <summary>
         /// The database name.
@@ -87,9 +84,9 @@ namespace PipServices3.Postgres.Persistence
         /// Gets PostgreSQL connection object.
         /// </summary>
         /// <returns>The PostgreSQL connection object.</returns>
-        public NpgsqlConnection GetConnection()
+        public async Task<NpgsqlConnection> GetConnection(string correlationId = null)
         {
-            return _connection;
+            return await CreateAndOpenConnectionAsync(correlationId);
         }
 
         /// <summary>
@@ -130,7 +127,7 @@ namespace PipServices3.Postgres.Persistence
         /// <returns>true if the component has been opened and false otherwise.</returns>
         public virtual bool IsOpen()
         {
-            return _connection != null;
+            return _databaseName != null;
         }
 
         /// <summary>
@@ -141,20 +138,29 @@ namespace PipServices3.Postgres.Persistence
         {
             var connectionString = await _connectionResolver.ResolveAsync(correlationId);
 
+            var settings = ComposeSettings();
+            _connectionString = connectionString.TrimEnd(';') + ";" + JoinParams(settings);
+
+            using (var connection = await CreateAndOpenConnectionAsync(correlationId))
+            {
+                _databaseName = connection.Database;
+            }
+        }
+
+        protected async virtual Task<NpgsqlConnection> CreateAndOpenConnectionAsync(string correlationId)
+        {
             _logger.Trace(correlationId, "Connecting to postgres...");
 
             try
             {
-                var settings = ComposeSettings();
-                var connString = connectionString.TrimEnd(';') + ";" + JoinParams(settings);
-
-                _connection = new NpgsqlConnection(connString);
-                _databaseName = _connection.Database;
+                var connection = new NpgsqlConnection(_connectionString);
 
                 // Try to connect
-                await _connection.OpenAsync();
+                await connection.OpenAsync();
 
-                _logger.Debug(correlationId, "Connected to postgres database {0}", _databaseName);
+                _logger.Debug(correlationId, "Connected to postgres database {0}", connection.Database);
+
+                return connection;
             }
             catch (Exception ex)
             {
@@ -188,11 +194,8 @@ namespace PipServices3.Postgres.Persistence
         /// <param name="correlationId">(optional) transaction id to trace execution through call chain.</param>
         public async virtual Task CloseAsync(string correlationId)
         {
-            // Todo: Properly close the connection
-            await _connection.CloseAsync();
-
-            _connection = null;
             _databaseName = null;
+            await Task.Delay(0);
         }
     }
 }

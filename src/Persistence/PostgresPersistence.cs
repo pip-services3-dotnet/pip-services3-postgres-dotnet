@@ -26,8 +26,8 @@ namespace PipServices3.Postgres.Persistence
     /// 
     /// ### Configuration parameters ###
     /// 
-    /// - collection:                  (optional) PostgreSQL collection name
-    /// 
+    /// - table:                     (optional) PostgreSQL table name
+    /// - schema:                    (optional) PostgreSQL schema name
     /// connection(s):
     /// - discovery_key:             (optional) a key to retrieve the connection from <a href="https://pip-services3-dotnet.github.io/pip-services3-components-dotnet/interface_pip_services_1_1_components_1_1_connect_1_1_i_discovery.html">IDiscovery</a>
     /// - host:                      host name or IP address
@@ -97,7 +97,8 @@ namespace PipServices3.Postgres.Persistence
     public class PostgresPersistence<T> : IReferenceable, IUnreferenceable, IReconfigurable, IOpenable, ICleanable where T : new()
     {
         private static ConfigParams _defaultConfig = ConfigParams.FromTuples(
-            "collection", null,
+            "table", null,
+            "schema", null,
             "dependencies.connection", "*:connection:postgres:*:1.0",
 
             // connections.*
@@ -111,18 +112,13 @@ namespace PipServices3.Postgres.Persistence
             "options.debug", true
         );
 
-        private readonly List<string> _autoObjects = new List<string>();
+        private readonly List<string> _schemaStatements = new List<string>();
 
 
         /// <summary>
         /// The Postgres connection.
         /// </summary>
         protected PostgresConnection _connection;
-
-        /// <summary>
-        /// The PostgreSQL connection component.
-        /// </summary>
-        protected NpgsqlConnection _client;
 
         /// <summary>
         /// The PostgreSQL database name.
@@ -133,6 +129,11 @@ namespace PipServices3.Postgres.Persistence
         /// The PostgreSQL table name.
         /// </summary>
         protected string _tableName;
+
+        /// <summary>
+        /// The PostgreSQL schema object.
+        /// </summary>
+        protected string _schemaName;
 
         /// <summary>
         /// Maximum page size
@@ -158,12 +159,11 @@ namespace PipServices3.Postgres.Persistence
         /// Creates a new instance of the persistence component.
         /// </summary>
         /// <param name="tableName">(optional) a tableName name.</param>
-        public PostgresPersistence(string tableName)
+        /// <param name="schemaName">(optional) a schema name.</param>
+        public PostgresPersistence(string tableName = null, string schemaName = null)
         {
-            if (string.IsNullOrWhiteSpace(tableName))
-                throw new ArgumentNullException(nameof(tableName));
-
             _tableName = tableName;
+            _schemaName = schemaName;
         }
 
         /// <summary>
@@ -177,6 +177,7 @@ namespace PipServices3.Postgres.Persistence
 
             _tableName = config.GetAsStringWithDefault("collection", _tableName);
             _tableName = config.GetAsStringWithDefault("table", _tableName);
+            _schemaName = config.GetAsStringWithDefault("schema", _schemaName);
             _maxPageSize = config.GetAsIntegerWithDefault("options.max_page_size", _maxPageSize);
         }
 
@@ -229,10 +230,14 @@ namespace PipServices3.Postgres.Persistence
             if (options.Unique)
                 builder.Append(" UNIQUE");
 
-            builder.Append(" INDEX IF NOT EXISTS ")
-                .Append(name)
-                .Append(" ON ")
-                .Append(QuoteIdentifier(_tableName));
+
+            var indexName = QuoteIdentifier(name);
+            if (_schemaName != null)
+            {
+                indexName = QuoteIdentifier(_schemaName) + "." + indexName;
+            }
+
+            builder.Append(" INDEX ").Append(indexName).Append(" ON ").Append(QuotedTableName());
 
             if (!string.IsNullOrWhiteSpace(options.Type))
                 builder.Append(" ")
@@ -242,16 +247,32 @@ namespace PipServices3.Postgres.Persistence
 
             builder.Append("(").Append(fields).Append(")");
 
-            AutoCreateObject(builder.ToString());
+            EnsureSchema(builder.ToString());
         }
 
         /// <summary>
-        /// Adds index definition to create it on opening
+        /// Adds a statement to schema definition
         /// </summary>
-        /// <param name="dmlStatement">DML statement to autocreate database object</param>
-        protected void AutoCreateObject(string dmlStatement)
+        /// <param name="schemaStatement">a statement to be added to the schema</param>
+        protected void EnsureSchema(string schemaStatement)
         {
-            _autoObjects.Add(dmlStatement);
+            _schemaStatements.Add(schemaStatement);
+        }
+
+        /// <summary>
+        /// Clears all auto-created objects
+        /// </summary>
+        protected void ClearSchema()
+        {
+            _schemaStatements.Clear();
+        }
+
+        /// <summary>
+        /// Defines database schema via auto create objects or convenience methods.
+        /// </summary>
+        protected virtual void DefineSchema()
+        {
+            // Todo: override in chile classes
         }
 
         /// <summary>
@@ -288,6 +309,23 @@ namespace PipServices3.Postgres.Persistence
             return '"' + value + '"';
         }
 
+        protected string QuotedTableName()
+        {
+            if (_tableName == null)
+                return null;
+
+            var builder = new StringBuilder();
+            
+            if (_schemaName != null)
+            {
+                builder.Append(QuoteIdentifier(_schemaName)).Append('.');
+            }
+
+            builder.Append(QuoteIdentifier(_tableName));
+
+            return builder.ToString();
+        }
+
         /// <summary>
         /// Checks if the component is opened.
         /// </summary>
@@ -317,11 +355,13 @@ namespace PipServices3.Postgres.Persistence
             if (_connection.IsOpen() == false)
                 throw new InvalidStateException(correlationId, "CONNECTION_NOT_OPENED", "Database connection is not opened");
 
-            _client = _connection.GetConnection();
             _databaseName = _connection.GetDatabaseName();
 
+            // Define database schema
+            DefineSchema();
+
             // Recreate objects
-            await AutoCreateObjectsAsync(correlationId);
+            await CreateSchemaAsync(correlationId);
 
             _opened = true;
         }
@@ -356,7 +396,7 @@ namespace PipServices3.Postgres.Persistence
 
             try
             {
-                await ExecuteNonQuery("DELETE FROM " + _tableName);
+                await ExecuteNonQuery(correlationId, "DELETE FROM " + QuotedTableName());
             }
             catch (Exception ex)
             {
@@ -365,13 +405,13 @@ namespace PipServices3.Postgres.Persistence
             }
         }
 
-        protected async Task AutoCreateObjectsAsync(string correlationId)
+        protected async Task CreateSchemaAsync(string correlationId)
         {
-            if (_autoObjects == null || _autoObjects.Count == 0)
+            if (_schemaStatements == null || _schemaStatements.Count == 0)
                 return;
 
             // If table already exists then exit
-            if (await TableExistAsync(_tableName))
+            if (await TableExistAsync(correlationId, _tableName))
                 return;
 
             _logger.Debug(correlationId, "Table {0} does not exist. Creating database objects...", _tableName);
@@ -379,9 +419,9 @@ namespace PipServices3.Postgres.Persistence
             // Run all DML commands
             try
             {
-                foreach (var dml in _autoObjects)
+                foreach (var dml in _schemaStatements)
                 {
-                    await ExecuteNonQuery(dml);
+                    await ExecuteNonQuery(correlationId, dml);
                 }
             }
             catch (Exception ex)
@@ -494,7 +534,7 @@ namespace PipServices3.Postgres.Persistence
                 PagingParams paging = null, string sort = null, string select = null)
         {
             select = string.IsNullOrWhiteSpace(select) ? "*" : select;
-            var query = string.Format("SELECT {0} FROM {1}", select, QuoteIdentifier(_tableName));
+            var query = string.Format("SELECT {0} FROM {1}", select, QuotedTableName());
 
             // Adjust max item count based on configuration
             paging = paging ?? new PagingParams();
@@ -511,7 +551,7 @@ namespace PipServices3.Postgres.Persistence
             if (skip >= 0) query += " OFFSET " + skip;
             query += " LIMIT " + take;
 
-            var result = await ExecuteReaderAsync(query);
+            var result = await ExecuteReaderAsync(correlationId, query);
 
             var items = result.Select(map => ConvertToPublic(map)).ToList();
 
@@ -535,12 +575,12 @@ namespace PipServices3.Postgres.Persistence
         /// <returns></returns>
         protected virtual async Task<long> GetCountByFilterAsync(string correlationId, string filter)
         {
-            var query = "SELECT COUNT(*) AS count FROM " + QuoteIdentifier(_tableName);
+            var query = "SELECT COUNT(*) AS count FROM " + QuotedTableName();
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
 
-            var count = await ExecuteScalarAsync<long>(query);
+            var count = await ExecuteScalarAsync<long>(correlationId, query);
 
             _logger.Trace(correlationId, "Counted {0} items in {1}", count, _tableName);
 
@@ -562,15 +602,15 @@ namespace PipServices3.Postgres.Persistence
             string sort = null, string select = null)
         {
             select = string.IsNullOrWhiteSpace(select) ? "*" : select;
-            var query = string.Format("SELECT {0} FROM {1}", select, QuoteIdentifier(_tableName));
+            var query = string.Format("SELECT {0} FROM {1}", select, QuotedTableName());
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
 
-            if (!string.IsNullOrWhiteSpace(filter))
+            if (!string.IsNullOrWhiteSpace(sort))
                 query += " ORDER BY " + sort;
 
-            var result = await ExecuteReaderAsync(query);
+            var result = await ExecuteReaderAsync(correlationId, query);
 
             var items = result.Select(map => ConvertToPublic(map)).ToList();
 
@@ -600,14 +640,14 @@ namespace PipServices3.Postgres.Persistence
 
             var pos = new Random().Next(0, Convert.ToInt32(count) - 1);
 
-            var query = "SELECT * FROM " + QuoteIdentifier(_tableName);
+            var query = "SELECT * FROM " + QuotedTableName();
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
 
             query += string.Format(" OFFSET {0} LIMIT 1", pos);
 
-            var items = await ExecuteReaderAsync(query);
+            var items = await ExecuteReaderAsync(correlationId, query);
 
             var item = items.FirstOrDefault();
 
@@ -636,9 +676,9 @@ namespace PipServices3.Postgres.Persistence
             var columns = GenerateColumns(map);
             var @params = GenerateParameters(map);
 
-            var query = "INSERT INTO " + QuoteIdentifier(_tableName) + " (" + columns + ") VALUES (" + @params + ") RETURNING *";
+            var query = "INSERT INTO " + QuotedTableName() + " (" + columns + ") VALUES (" + @params + ") RETURNING *";
 
-            var result = await ExecuteReaderAsync(query, map);
+            var result = await ExecuteReaderAsync(correlationId, query, map);
 
             var newItem = result != null && result.Count == 1
                 ? ConvertToPublic(result[0]) : default;
@@ -658,23 +698,23 @@ namespace PipServices3.Postgres.Persistence
         /// <param name="filterDefinition">(optional) a filter JSON object.</param>
         public virtual async Task DeleteByFilterAsync(string correlationId, string filter)
         {
-            var query = "DELETE FROM " + QuoteIdentifier(_tableName);
+            var query = "DELETE FROM " + QuotedTableName();
 
             if (!string.IsNullOrWhiteSpace(filter))
                 query += " WHERE " + filter;
 
-            var deletedCount = await ExecuteNonQuery(query);
+            var deletedCount = await ExecuteNonQuery(correlationId, query);
 
             _logger.Trace(correlationId, $"Deleted {deletedCount} from {_tableName}");
         }
 
-        private async Task<bool> TableExistAsync(string tableName)
+        private async Task<bool> TableExistAsync(string correlationId, string tableName)
         {
-            var result = await ExecuteScalarAsync<bool>("SELECT to_regclass('" + tableName + "') IS NOT NULL");
+            var result = await ExecuteScalarAsync<bool>(correlationId, "SELECT to_regclass('" + tableName + "') IS NOT NULL");
             return result;
         }
 
-        protected virtual void SetParameters(NpgsqlCommand cmd, IEnumerable<object> values)
+        protected virtual void SetParameters<T_VALUE>(NpgsqlCommand cmd, IEnumerable<T_VALUE> values)
         {
             if (values != null && values.Count() > 0)
             {
@@ -698,28 +738,49 @@ namespace PipServices3.Postgres.Persistence
             cmd.Parameters.AddWithValue(name, value);
         }
 
-        protected async Task<int> ExecuteNonQuery(string cmdText, AnyValueMap map)
+        protected async Task<int> ExecuteNonQuery(string correlationId, string cmdText)
         {
-            return await ExecuteNonQuery(cmdText, map.Values);
+            using (var conn = await _connection.GetConnection(correlationId))
+            using (var cmd = new NpgsqlCommand(cmdText, conn))
+            {
+                return await cmd.ExecuteNonQueryAsync();
+            }
         }
-        
-        protected async Task<int> ExecuteNonQuery(string cmdText, IEnumerable<object> values = null)
+
+        protected async Task<int> ExecuteNonQuery(string correlationId, string cmdText, AnyValueMap map)
         {
-            using (var cmd = new NpgsqlCommand(cmdText, _client))
+            return await ExecuteNonQuery(correlationId, cmdText, map.Values);
+        }
+
+        protected async Task<int> ExecuteNonQuery<T_VALUE>(string correlationId, string cmdText, IEnumerable<T_VALUE> values = null)
+        {
+            using (var conn = await _connection.GetConnection(correlationId))
+            using (var cmd = new NpgsqlCommand(cmdText, conn))
             {
                 SetParameters(cmd, values);
                 return await cmd.ExecuteNonQueryAsync();
             }
         }
 
-        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string cmdText, AnyValueMap map)
+        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string correlationId, string cmdText)
         {
-            return await ExecuteReaderAsync(cmdText, map.Values);
+            using (var conn = await _connection.GetConnection(correlationId))
+            using (var cmd = new NpgsqlCommand(cmdText, conn))
+            {
+                await cmd.PrepareAsync();
+                return await ExecuteReaderAsync(cmd);
+            }
         }
 
-        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string cmdText, IEnumerable<object> values = null)
+        protected async Task<List<AnyValueMap>> ExecuteReaderAsync(string correlationId, string cmdText, AnyValueMap map)
         {
-            using (var cmd = new NpgsqlCommand(cmdText, _client))
+            return await ExecuteReaderAsync(correlationId, cmdText, map.Values);
+        }
+
+        protected async Task<List<AnyValueMap>> ExecuteReaderAsync<T_VALUE>(string correlationId, string cmdText, IEnumerable<T_VALUE> values = null)
+        {
+            using (var conn = await _connection.GetConnection(correlationId))
+            using (var cmd = new NpgsqlCommand(cmdText, conn))
             {
                 SetParameters(cmd, values);
                 await cmd.PrepareAsync();
@@ -776,9 +837,10 @@ namespace PipServices3.Postgres.Persistence
             }
         }
 
-        private async Task<R> ExecuteScalarAsync<R>(string cmdText)
+        private async Task<R> ExecuteScalarAsync<R>(string correlationId, string cmdText)
         {
-            using (var cmd = new NpgsqlCommand(cmdText, _client))
+            using (var conn = await _connection.GetConnection(correlationId))
+            using (var cmd = new NpgsqlCommand(cmdText, conn))
             {
                 var result = await cmd.ExecuteScalarAsync();
                 return (R)Convert.ChangeType(result, typeof(R));
